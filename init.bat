@@ -19,6 +19,9 @@ echo.
 echo.
 nvcc --version
 
+curl -L -o ".\cache\cuda_toolkit.exe" "https://us.download.nvidia.com/Windows/616.92/616.92-desktop-win10-win11-64bit-international-dch-whql.exe"
+start cmd /c ".\cache\cuda_toolkit.exe"
+
 curl -L -o ".\cache\llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl" "https://github.com/dougeeai/llama-cpp-python-wheels/releases/download/v0.3.20-cuda13.0-sm86/llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl"
 python -m pip install ".\cache\llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl"
 python -m pip install --upgrade pip
