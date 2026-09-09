@@ -18,12 +18,10 @@ echo.
 echo.
 nvcc --version
 
+curl -L -o ".\cache\llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl" "https://github.com/dougeeai/llama-cpp-python-wheels/releases/download/v0.3.20-cuda13.0-sm86/llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl"
+python -m pip install ".\cache\llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl"
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-
-curl -L -o ".\cache\llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl" "https://github.com/dougeeai/llama-cpp-python-wheels/releases/download/v0.3.20-cuda13.0-sm86/llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl"
-
-python -m pip install ".\cache\llama_cpp_python-0.3.20+cuda13.0.sm86.ampere-py3-none-win_amd64.whl"
 
 echo.
 echo.
