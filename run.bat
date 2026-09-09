@@ -19,5 +19,5 @@ echo.
 echo.
 nvcc --version
 
-rem python manage.py
+python manage.py
 pause
