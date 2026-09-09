@@ -1,7 +1,6 @@
 @echo off
 mkdir cache
-mkdir data
-mkdir data/TENDERS
+mkdir data\TENDERS
 py -3.11 -m venv .venv
 call .\.venv\Scripts\activate.bat
 
