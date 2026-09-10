@@ -2,6 +2,9 @@
 echo =======================================================
 echo ========= MAKE SURE A AI MODEL IS INSTALLED ===========
 echo =======================================================
+
+mkdir data\TENDERS
+
 call .\.venv\Scripts\activate.bat
 
 echo.

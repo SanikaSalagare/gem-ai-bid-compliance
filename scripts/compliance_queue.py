@@ -10,6 +10,7 @@ from pathlib import Path
 
 from scripts import compliance_checker, text_extractor
 from scripts.model_manager import reset_context
+from scripts.atomic_io import merge_write_json
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TENDERS_DIR = ROOT_DIR / "data" / "TENDERS"
@@ -29,9 +30,12 @@ def _status_path(tender_id, bid_id):
 
 
 def _persist(job):
+    # analysis_status.json is shared with compliance_checker.process_bid,
+    # which writes the "bid_documents_hash" / "requirements" keys onto the
+    # same file for per-requirement progress/caching. Merge instead of
+    # overwriting so neither writer clobbers the other's keys.
     path = _status_path(job["tender_id"], job["bid_id"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(job, indent=4), encoding="utf-8")
+    merge_write_json(path, job)
 
 
 def _worker():

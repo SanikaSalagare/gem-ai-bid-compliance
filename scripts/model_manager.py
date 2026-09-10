@@ -28,7 +28,7 @@ def get_llm():
                 # silently closed out with an empty "[]"/"{}" instead of
                 # erroring. Match the model's trained context so there is
                 # always room for the completion.
-                n_ctx=32768,
+                n_ctx=8192,
                 verbose=False,
             )
         return _llm

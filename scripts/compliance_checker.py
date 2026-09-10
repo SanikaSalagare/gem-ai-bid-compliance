@@ -1,12 +1,17 @@
 from pathlib import Path
+import gc
+import hashlib
 import json
 import re
 
 from scripts.model_manager import get_llm, reset_context
+from scripts.atomic_io import atomic_write_json, merge_write_json
+from scripts import text_extractor
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 OUTPUT_FILENAME = "evaluation.json"
+STATUS_FILENAME = "analysis_status.json"
 
 
 
@@ -161,6 +166,8 @@ def evaluate_requirement(llm, requirement, pages):
             "evidence": None,
         }
 
+    prompt = build_prompt(requirement, relevant)
+
     response = llm.create_chat_completion(
         messages=[
             {
@@ -172,10 +179,7 @@ def evaluate_requirement(llm, requirement, pages):
             },
             {
                 "role": "user",
-                "content": build_prompt(
-                    requirement,
-                    relevant,
-                ),
+                "content": prompt,
             },
         ],
         temperature=0.25,
@@ -207,13 +211,93 @@ def evaluate_requirement(llm, requirement, pages):
         except (TypeError, ValueError):
             page = None
 
-    return {
+    output = {
         "id": requirement["id"],
         "score": score,
         "file": file_name,
         "page": page,
         "evidence": evidence,
     }
+
+    # Drop per-call temporaries (evidence pages, the built prompt, and the
+    # raw LLM response object) now that we've extracted what we need. The
+    # LLM instance itself is left loaded/untouched.
+    del relevant, prompt, response, result
+    gc.collect()
+
+    return output
+
+
+def compute_bid_documents_hash(bid_dir):
+    """A single hash representing the current set of bidder files.
+
+    Changes if any file under bid_dir/documents is added, removed, or
+    modified (each file's own SHA-256 changes when its content changes).
+    """
+    documents_dir = bid_dir / "documents"
+    parts = []
+
+    if documents_dir.exists():
+        for pdf_path in sorted(documents_dir.glob("*.pdf")):
+            parts.append(
+                f"{pdf_path.name}:{text_extractor.get_pdf_hash(pdf_path)}"
+            )
+
+    combined = "\n".join(parts).encode("utf-8")
+    return hashlib.sha256(combined).hexdigest()
+
+
+def compute_requirement_hash(requirement):
+    payload = json.dumps(requirement, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def compute_input_hash(requirement_hash, bid_documents_hash):
+    combined = f"{requirement_hash}:{bid_documents_hash}".encode("utf-8")
+    return hashlib.sha256(combined).hexdigest()
+
+
+def load_status(bid_dir):
+    path = bid_dir / STATUS_FILENAME
+
+    if not path.exists():
+        return {}
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    return data if isinstance(data, dict) else {}
+
+
+def save_status(bid_dir, bid_documents_hash, requirements_status):
+    # Merge (not overwrite): compliance_queue.py also writes job-level
+    # keys ("status", "error", timestamps, ...) onto this same file.
+    merge_write_json(
+        bid_dir / STATUS_FILENAME,
+        {
+            "bid_documents_hash": bid_documents_hash,
+            "requirements": requirements_status,
+        },
+    )
+
+
+def save_evaluation(bid_dir, evaluation):
+    atomic_write_json(bid_dir / OUTPUT_FILENAME, evaluation)
+
+
+def build_evaluation(requirements, requirements_status):
+    """evaluation.json content: the result of every requirement that is
+    currently completed, in the tender's requirement order."""
+    evaluation = []
+
+    for requirement in requirements:
+        entry = requirements_status.get(str(requirement["id"]))
+        if entry and entry.get("status") == "completed" and entry.get("result"):
+            evaluation.append(entry["result"])
+
+    return evaluation
 
 
 def process_bid(tender_dir, bid_id):
@@ -226,46 +310,104 @@ def process_bid(tender_dir, bid_id):
         )
 
     requirements = load_requirements(tender_dir)
-    pages = load_pages(bid_dir)
+    bid_documents_hash = compute_bid_documents_hash(bid_dir)
 
-    if not pages:
-        raise ValueError(
-            f"No processed bid documents found in: {bid_dir}"
+    existing_status = load_status(bid_dir)
+    existing_requirements = existing_status.get("requirements", {})
+
+    # Seed this run's status for every requirement: reuse a cached result
+    # only if the requirement itself, the bidder documents, and the
+    # previous completion are all still valid (same requirement hash +
+    # same bid-documents hash + status "completed"). A requirement whose
+    # last run was interrupted mid-way ("processing") is treated as
+    # unfinished and re-run, which is what makes this resumable after a
+    # crash.
+    requirements_status = {}
+
+    for requirement in requirements:
+        req_id = str(requirement["id"])
+        requirement_hash = compute_requirement_hash(requirement)
+        input_hash = compute_input_hash(requirement_hash, bid_documents_hash)
+
+        cached = existing_requirements.get(req_id)
+        cache_is_valid = (
+            cached is not None
+            and cached.get("status") == "completed"
+            and cached.get("input_hash") == input_hash
+            and cached.get("result") is not None
         )
 
-    llm = get_llm()
-    reset_context()
-    evaluation = []
+        if cache_is_valid:
+            requirements_status[req_id] = cached
+        else:
+            requirements_status[req_id] = {
+                "status": "pending",
+                "requirement_hash": requirement_hash,
+                "input_hash": input_hash,
+            }
 
-    for index, requirement in enumerate(
-        requirements,
-        start=1,
-    ):
+    save_status(bid_dir, bid_documents_hash, requirements_status)
+    save_evaluation(bid_dir, build_evaluation(requirements, requirements_status))
+
+    llm = None
+    pages = None
+
+    for index, requirement in enumerate(requirements, start=1):
+        req_id = str(requirement["id"])
+        entry = requirements_status[req_id]
+
+        if entry["status"] == "completed":
+            # Valid cached result (see cache_is_valid above) - the LLM is
+            # not called for this requirement.
+            continue
+
         print(
             f"Compliance requirement "
             f"{index}/{len(requirements)}"
         )
 
+        entry["status"] = "processing"
+        save_status(bid_dir, bid_documents_hash, requirements_status)
+
+        if llm is None:
+            # Loaded/lazily fetched at most once per process_bid call; if
+            # every requirement was cache-valid this never runs.
+            llm = get_llm()
+            pages = load_pages(bid_dir)
+
+            if not pages:
+                raise ValueError(
+                    f"No processed bid documents found in: {bid_dir}"
+                )
+
         reset_context()
-        evaluation.append(
-            evaluate_requirement(
-                llm,
-                requirement,
-                pages,
-            )
+
+        try:
+            result = evaluate_requirement(llm, requirement, pages)
+        except Exception as exc:
+            entry["status"] = "failed"
+            entry["error"] = str(exc)
+            save_status(bid_dir, bid_documents_hash, requirements_status)
+            raise
+        finally:
+            gc.collect()
+
+        entry["status"] = "completed"
+        entry["result"] = result
+        entry.pop("error", None)
+
+        save_status(bid_dir, bid_documents_hash, requirements_status)
+        save_evaluation(
+            bid_dir,
+            build_evaluation(requirements, requirements_status),
         )
 
-    output_path = bid_dir / OUTPUT_FILENAME
-    output_path.write_text(
-        json.dumps(
-            evaluation,
-            indent=4,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+        # This requirement's result now lives in requirements_status /
+        # evaluation.json; drop the local reference before moving on.
+        del result
+        gc.collect()
 
-    return evaluation
+    return build_evaluation(requirements, requirements_status)
 
 
 if __name__ == "__main__":

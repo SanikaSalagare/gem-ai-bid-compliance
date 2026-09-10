@@ -6,10 +6,17 @@ import shutil
 from scripts import text_extractor
 from scripts import requirement_detector
 from scripts import compliance_checker
+from scripts.atomic_io import atomic_write_json, merge_write_json
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 TENDERS_DIR = ROOT_DIR / "data" / "TENDERS"
+
+# Key inside tender.json (alongside the buyer-entered metadata fields)
+# used to remember each tender document's SHA-256 hash, so unchanged
+# tender documents don't trigger a fresh (expensive) requirement
+# extraction pass on every process_tender() call.
+TENDER_FILE_HASHES_KEY = "_file_hashes"
 
 
 def create_tender(metadata=None):
@@ -47,9 +54,16 @@ def get_tender_metadata(tender_id):
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
+    # Hide the internal file-hash bookkeeping key from callers that treat
+    # this as "the tender's metadata" (buyer-entered fields only).
+    return {
+        key: value
+        for key, value in data.items()
+        if key != TENDER_FILE_HASHES_KEY
+    }
 
 
 def update_tender_metadata(tender_id, metadata):
@@ -57,7 +71,19 @@ def update_tender_metadata(tender_id, metadata):
     if tender_dir is None:
         raise FileNotFoundError(f"Tender not found: {tender_id}")
     path = tender_dir / "tender.json"
-    path.write_text(json.dumps(metadata, indent=4, ensure_ascii=False), encoding="utf-8")
+
+    existing = {}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            existing = {}
+
+    data = dict(metadata)
+    if TENDER_FILE_HASHES_KEY in existing:
+        data[TENDER_FILE_HASHES_KEY] = existing[TENDER_FILE_HASHES_KEY]
+
+    atomic_write_json(path, data)
 
 
 def get_tender(tender_id):
@@ -102,13 +128,49 @@ def add_tender_document(tender_id, file_path):
     return destination
 
 
+def _compute_tender_document_hashes(tender_dir):
+    documents_dir = tender_dir / "tender_documents"
+    hashes = {}
+
+    if documents_dir.exists():
+        for pdf_path in sorted(documents_dir.glob("*.pdf")):
+            hashes[pdf_path.name] = text_extractor.get_pdf_hash(pdf_path)
+
+    return hashes
+
+
 def process_tender_documents(tender_id):
+    """Run text extraction over the tender's documents, then record each
+    document's current hash in tender.json.
+
+    Returns True if the tender's document set changed (a file was added,
+    removed, or its content changed) since the last time this ran, False
+    if every document's hash is unchanged.
+    """
     tender_dir = get_tender(tender_id)
     if tender_dir is None:
         raise FileNotFoundError(f"Tender not found: {tender_id}")
 
+    # text_extractor already skips re-extracting/re-OCRing any individual
+    # PDF whose hash hasn't changed (see text_extractor.process_pdf); this
+    # is preserved as-is.
     text_extractor.process_tender(tender_dir)
-    return True
+
+    tender_json_path = tender_dir / "tender.json"
+    old_data = {}
+    if tender_json_path.exists():
+        try:
+            old_data = json.loads(tender_json_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            old_data = {}
+
+    old_hashes = old_data.get(TENDER_FILE_HASHES_KEY, {})
+    new_hashes = _compute_tender_document_hashes(tender_dir)
+    changed = old_hashes != new_hashes
+
+    merge_write_json(tender_json_path, {TENDER_FILE_HASHES_KEY: new_hashes})
+
+    return changed
 
 
 def generate_requirements(tender_id):
@@ -120,7 +182,18 @@ def generate_requirements(tender_id):
 
 
 def process_tender(tender_id):
-    process_tender_documents(tender_id)
+    tender_dir = get_tender(tender_id)
+    if tender_dir is None:
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
+
+    changed = process_tender_documents(tender_id)
+
+    requirements_path = tender_dir / "requirement.json"
+    if not changed and requirements_path.exists():
+        # No tender document changed and requirements already exist for
+        # this tender: reuse them instead of re-running the LLM.
+        return get_requirements(tender_id)
+
     return generate_requirements(tender_id)
 
 

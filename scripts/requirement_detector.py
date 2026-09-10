@@ -109,44 +109,41 @@ Each item in the array must have exactly:
     "file": ""
 }}
 
-Example of the required shape:
+Each "requirement" must be ONE atomic, single-condition requirement -
+not a paragraph, not a bullet block, and not several conditions joined
+together with semicolons/commas/newlines.
+
+If the tender lists a labeled specification table or a bullet list
+(e.g. "Processor: ...; Memory: ...; Storage: ...; Warranty: ..."),
+split it into one requirement item PER LABEL/LINE. Do not merge them
+into a single combined string. Keep each label with its own value, and
+drop the trailing separator (";", ",") when it is not part of the
+value itself.
+
+Example of the required shape (note: several requirement objects,
+one per line item, all citing the same page/file they came from):
 {{
     "requirements": [
-        {{"requirement": "...", "page": 1, "file": "example.pdf"}}
+        {{"requirement": "Processor: Intel Core i5 / AMD Ryzen 5 equivalent or better", "page": 4, "file": "example.pdf"}},
+        {{"requirement": "Memory: Minimum 16 GB RAM", "page": 4, "file": "example.pdf"}},
+        {{"requirement": "Storage: Minimum 512 GB SSD", "page": 4, "file": "example.pdf"}},
+        {{"requirement": "Warranty: Minimum 3 years onsite warranty", "page": 4, "file": "example.pdf"}}
     ]
 }}
-
-Atomicity rule (important):
-- Each requirement item must state exactly ONE condition, spec line,
-  or clause. Never bundle multiple specs, fields, or clauses into a
-  single "requirement" string just because the source lists them
-  together (e.g. a spec table row, a semicolon-separated list, or a
-  bullet with sub-parts).
-- If a single sentence, bullet, or table row contains several distinct
-  specs (Processor, Memory, Storage, Display, Warranty, etc.) or
-  several distinct clauses, split it into one requirement item per
-  spec/clause, each on the same page/file.
-- Bad (do NOT do this):
-  "requirement": "Minimum Technical Specification: Processor: Intel
-  Core i5 or better; Memory: Minimum 16 GB RAM; Storage: Minimum 512
-  GB SSD; Warranty: Minimum 3 years onsite warranty"
-- Good (do this instead) — four separate items:
-  "requirement": "Processor: Intel Core i5 / AMD Ryzen 5 equivalent
-  or better"
-  "requirement": "Memory: Minimum 16 GB RAM"
-  "requirement": "Storage: Minimum 512 GB SSD"
-  "requirement": "Warranty: Minimum 3 years onsite warranty"
-- A shared heading (e.g. "Minimum Technical Specification") is context,
-  not a requirement itself — drop it rather than prefixing every item
-  with it.
-- Keep each item as short as possible while still preserving its exact
-  numbers, units, and conditions.
 
 Rules:
 - Extract only explicit buyer requirements.
 - Do not invent or infer requirements.
-- Preserve numbers, quantities, limits, standards and conditions.
-- Include the source PDF filename and exact page number.
+- Split any compound/list-style requirement into separate atomic items,
+  one condition per item, even if the source text presents them as one
+  run-on sentence or a semicolon/comma-separated list.
+- Never join two or more distinct conditions into a single
+  "requirement" string with ";", " and ", or similar.
+- Preserve numbers, quantities, limits, standards and conditions
+  exactly as written for each individual item.
+- Keep each item's own label/prefix (e.g. "Processor:", "Memory:") if
+  the source uses labels, so the item stays understandable on its own.
+- Include the source PDF filename and exact page number for every item.
 - If there are no requirements in this chunk, return {{"requirements": []}}.
 - Do not create IDs. IDs will be assigned after consolidation.
 - Return JSON only.

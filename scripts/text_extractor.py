@@ -1,4 +1,5 @@
 import re
+import gc
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
@@ -103,6 +104,12 @@ def extract_digital_pages(pdf_path: Path) -> list[str]:
         text = page.extract_text() or "[No text detected]"
         pages.append(clean_text(text))
 
+    # The PdfReader keeps the whole parsed document (and each page object)
+    # alive; it's only needed to build `pages` above, so drop it as soon
+    # as we're done rather than letting it linger for the caller's scope.
+    del reader
+    gc.collect()
+
     return pages
 
 
@@ -120,6 +127,13 @@ def extract_scanned_pages(pdf_path: Path) -> list[str]:
             if page_text.strip()
             else "[No text detected]"
         )
+
+    # `results` holds the raw OCR output (images/boxes/etc. per page);
+    # `pages` already has everything we need from it, so release it.
+    # The OCR engine itself (`ocr`) is the persistent, cached instance
+    # and is intentionally left alone.
+    del results
+    gc.collect()
 
     return pages
 
@@ -183,6 +197,11 @@ def process_pdf(pdf_path: Path, processed_dir: Path) -> bool:
         ),
         encoding="utf-8",
     )
+
+    # Release the extracted page text now that it's on disk, and force a
+    # collection after this (potentially large) processing stage.
+    del pages
+    gc.collect()
 
     return True
 

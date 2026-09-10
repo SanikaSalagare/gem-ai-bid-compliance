@@ -97,4 +97,9 @@
     </div>
     {% endif %}
 </div>
+{% if analysis_status and analysis_status.status == "queued" or analysis_status.status == "processing" %}
+<script>
+(function(){ const url="{% url 'analysis_status' tender_id bid.bid_id %}"; const poll=async()=>{ try{ const r=await fetch(url,{cache:"no-store"}); const d=await r.json(); if(d.status==="completed"||d.status==="failed"){location.reload();return;} }catch(e){} setTimeout(poll,2000); }; setTimeout(poll,2000); })();
+</script>
+{% endif %}
 {% endblock %}
