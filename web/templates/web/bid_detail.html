@@ -24,27 +24,23 @@
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>Overall Compliance</h2></div>
-    {% if bid.evaluation_ready %}
-    <div class="compliance-summary">
-        <div class="compliance-score-ring" style="--pct: {{ bid.overall_score }};">
-            <div class="inner">
-                <strong>{{ bid.overall_score }}%</strong>
-                <span>Overall</span>
-            </div>
-        </div>
+    <div class="card-header"><h2>Compliance Analysis</h2></div>
+    {% if analysis_status and analysis_status.status == "queued" %}
+        <div class="queue-status queued"><strong>Queued</strong><span>Your bid is waiting for the next available analysis slot.</span></div>
+    {% elif analysis_status and analysis_status.status == "processing" %}
+        <div class="queue-status processing"><strong>Processing</strong><span>The compliance engine is currently analyzing this bid.</span></div>
+    {% elif analysis_status and analysis_status.status == "failed" %}
+        <div class="queue-status failed"><strong>Analysis failed</strong><span>{{ analysis_status.error }}</span></div>
+    {% elif bid.evaluation_ready %}
+        <div class="score-summary"><div><span class="score-number">{{ bid.overall_score }}</span><span class="score-denom">/100</span></div><div><div class="score-label">{{ bid.overall_label }}</div><p class="card-subtle">Overall score based on the AI's requirement-level assessments.</p></div></div>
         <div class="compliance-breakdown">
-            <div class="breakdown-item"><span class="status-badge compliant"><span class="icon">&#10003;</span></span><span class="count">{{ bid.counts.COMPLIANT }}</span> Compliant</div>
-            <div class="breakdown-item"><span class="status-badge partial"><span class="icon">&#9888;</span></span><span class="count">{{ bid.counts.PARTIALLY_COMPLIANT }}</span> Partial</div>
-            <div class="breakdown-item"><span class="status-badge non-compliant"><span class="icon">&#10007;</span></span><span class="count">{{ bid.counts.NON_COMPLIANT }}</span> Non-Compliant</div>
-            <div class="breakdown-item"><span class="status-badge missing"><span class="icon">!</span></span><span class="count">{{ bid.counts.MISSING }}</span> Missing</div>
+            <div class="breakdown-item"><span class="count">{{ bid.counts.COMPLIANT }}</span> Compliant</div>
+            <div class="breakdown-item"><span class="count">{{ bid.counts.PARTIALLY_COMPLIANT }}</span> Partial</div>
+            <div class="breakdown-item"><span class="count">{{ bid.counts.NON_COMPLIANT }}</span> Non-Compliant</div>
+            <div class="breakdown-item"><span class="count">{{ bid.counts.MISSING }}</span> Missing</div>
         </div>
-    </div>
     {% else %}
-    <div class="empty-state">
-        <div class="icon">&#9203;</div>
-        <p>Compliance has not been evaluated yet. Upload documents below and run the compliance check.</p>
-    </div>
+        <div class="empty-state"><div class="icon">&#9203;</div><p>Compliance has not been evaluated yet. Upload documents below and run the compliance check.</p></div>
     {% endif %}
 </div>
 
@@ -52,14 +48,6 @@
     <div class="card-header">
         <h2>Submitted Documents</h2>
     </div>
-    <form method="post" action="{% url 'seller_upload_bid_document' tender_id bid.bid_id %}" enctype="multipart/form-data" class="inline-form" style="margin-bottom:18px;">
-        {% csrf_token %}
-        <div class="file-input-wrap">
-            <input type="file" name="document" accept="application/pdf" required>
-        </div>
-        <button type="submit" class="button primary">Upload PDF</button>
-    </form>
-
     {% if bid.documents %}
     <div class="data-table-wrap">
     <table class="data-table">
@@ -87,13 +75,14 @@
     {% if bid.rows %}
     <div class="data-table-wrap">
     <table class="data-table">
-        <thead><tr><th>Requirement</th><th>Status</th><th>Evidence</th><th>Source</th><th></th></tr></thead>
+        <thead><tr><th>Requirement</th><th>Score</th><th>Status</th><th>Evidence</th><th>Source</th><th></th></tr></thead>
         <tbody>
         {% for row in bid.rows %}
             <tr>
-                <td class="id-cell">REQ-{{ row.requirement.id|stringformat:"03d" }}<br><span class="muted-cell" style="font-weight:400;">{{ row.requirement.requirement|truncatechars:80 }}</span></td>
+                <td class="id-cell"><a class="text-link" href="{% url 'compliance_detail' tender_id bid.bid_id row.requirement.id %}">REQ-{{ row.requirement.id|stringformat:"03d" }}</a><br><span class="muted-cell">{{ row.requirement.requirement|truncatechars:80 }}</span></td>
+                <td><strong>{% if row.evaluation %}{{ row.evaluation.score }}{% else %}—{% endif %}</strong>{% if row.evaluation %}/100{% endif %}</td>
                 <td>{% include "web/partials/status_badge.html" with meta=row.status_meta %}</td>
-                <td>{% if row.evaluation and row.evaluation.evidence %}{{ row.evaluation.evidence|truncatechars:60 }}{% else %}<span class="muted-cell">No evidence found</span>{% endif %}</td>
+                <td>{% if row.evaluation and row.evaluation.evidence %}{{ row.evaluation.evidence|truncatechars:60 }}{% if row.evaluation.file %}<br><a class="text-link" href="{% url 'bid_document_viewer' tender_id bid.bid_id row.evaluation.file %}?view=pdf&page={{ row.evaluation.page }}">Open page {{ row.evaluation.page }}</a>{% endif %}{% else %}<span class="muted-cell">No evidence found</span>{% endif %}</td>
                 <td class="muted-cell">{% if row.evaluation and row.evaluation.file %}{{ row.evaluation.file }}{% if row.evaluation.page %}, p.{{ row.evaluation.page }}{% endif %}{% else %}—{% endif %}</td>
                 <td><a class="button small" href="{% url 'compliance_detail' tender_id bid.bid_id row.requirement.id %}">View Details</a></td>
             </tr>

@@ -73,6 +73,19 @@ def classify_score(evaluation_entry: Optional[dict]) -> str:
     return STATUS_NON_COMPLIANT
 
 
+
+def score_label(score):
+    if score is None:
+        return "Pending"
+    score = max(0, min(100, int(score)))
+    if score >= 80:
+        return "Highly Compliant"
+    if score >= 60:
+        return "Mostly Compliant"
+    if score >= 40:
+        return "Needs Review"
+    return "Poor Compliance"
+
 def status_meta(status: str) -> dict:
     return STATUS_META.get(status, STATUS_META[STATUS_UNKNOWN])
 
@@ -87,6 +100,7 @@ class TenderSummary:
     requirements: Optional[list]
     bids: list
     documents: list
+    metadata: dict
     requirements_ready: bool = field(init=False)
 
     def __post_init__(self):
@@ -112,12 +126,14 @@ def get_tender_summary(tender_id: str) -> Optional[TenderSummary]:
     requirements = manage.get_requirements(tender_id)
     bids = manage.list_bids(tender_id)
     documents = manage.get_documents(tender_id)
+    metadata = manage.get_tender_metadata(tender_id) or {}
 
     return TenderSummary(
         tender_id=tender_id,
         requirements=requirements,
         bids=bids,
         documents=documents,
+        metadata=metadata,
     )
 
 
@@ -149,6 +165,8 @@ class BidSummary:
     evaluation_ready: bool
     counts: dict
     overall_score: Optional[int]
+    overall_status: str
+    overall_label: str
 
 
 def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
@@ -184,6 +202,9 @@ def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
 
     overall_score = round(sum(scored) / len(scored)) if scored else None
 
+    overall_status = classify_score({"score": overall_score, "evidence": True}) if overall_score is not None else STATUS_PENDING
+    overall_label = score_label(overall_score)
+
     return BidSummary(
         bid_id=bid_id,
         documents=documents,
@@ -191,6 +212,8 @@ def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
         evaluation_ready=evaluation is not None,
         counts=counts,
         overall_score=overall_score,
+        overall_status=overall_status,
+        overall_label=overall_label,
     )
 
 

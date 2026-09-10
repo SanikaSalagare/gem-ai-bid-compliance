@@ -1,0 +1,71 @@
+{% extends "web/app_base.html" %}
+{% block title %}Create GeM Tender{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
+    <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
+    <span class="current">Create Tender</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Create GeM Tender</h1>
+        <p class="lead">Enter the tender information before uploading documents.</p>
+    </div>
+</div>
+
+<form method="post" class="card form-card">
+    {% csrf_token %}
+
+    <div class="form-grid">
+        <div>
+            <label>Tender title</label>
+            <input name="title" type="text" placeholder="e.g. Supply of Laptop Computers" required>
+        </div>
+        <div>
+            <label>GeM category</label>
+            <input name="category" type="text" placeholder="e.g. Laptop - Notebook" required>
+        </div>
+        <div>
+            <label>Quantity</label>
+            <input name="quantity" type="text" placeholder="e.g. 50 units">
+        </div>
+        <div>
+            <label>Bid type</label>
+            <select name="bid_type">
+                <option>Open Bid</option>
+                <option>Limited Bid</option>
+                <option>Direct Procurement</option>
+            </select>
+        </div>
+        <div>
+            <label>Delivery period</label>
+            <input name="delivery_period" type="text" placeholder="e.g. 30 days">
+        </div>
+        <div>
+            <label>Bid validity</label>
+            <input name="bid_validity" type="text" placeholder="e.g. 90 days">
+        </div>
+    </div>
+
+    <div class="check-row">
+        <label><input type="checkbox" name="emd_required"> EMD required</label>
+        <label><input type="checkbox" name="performance_security_required"> Performance security required</label>
+    </div>
+
+    <div>
+        <label>Eligibility information</label>
+        <textarea name="eligibility" rows="4" placeholder="Enter buyer-known eligibility conditions..."></textarea>
+    </div>
+    <div>
+        <label>Tender description</label>
+        <textarea name="description" rows="4" placeholder="Short description of the procurement..."></textarea>
+    </div>
+
+    <div class="form-actions">
+        <a class="button ghost" href="{% url 'tender_list' %}">Cancel</a>
+        <button class="button primary" type="submit">Create Tender</button>
+    </div>
+</form>
+{% endblock %}

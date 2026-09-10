@@ -2,30 +2,14 @@ from pathlib import Path
 import json
 import re
 
-from llama_cpp import Llama
+from scripts.model_manager import get_llm, reset_context
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = ROOT_DIR / "AI" / "models" / "Qwen3-8B-Q4_K_M.gguf"
 
 OUTPUT_FILENAME = "requirement.json"
 
 MAX_CHUNK_CHARS = 12000
 
-_llm = None
-
-
-def get_llm():
-    global _llm
-
-    if _llm is None:
-        _llm = Llama(
-            model_path=str(MODEL_PATH),
-            n_gpu_layers=-1,
-            n_ctx=4096,
-            verbose=False,
-        )
-
-    return _llm
 
 
 def load_pages(tender_dir):
@@ -115,21 +99,55 @@ You are extracting buyer requirements from a government procurement tender.
 
 Read ONLY the supplied tender pages.
 
-Return ONLY a valid JSON array.
+Return ONLY a valid JSON object with exactly one key, "requirements",
+whose value is a JSON array.
 
-Each item must have exactly:
+Each item in the array must have exactly:
 {{
     "requirement": "",
     "page": 0,
     "file": ""
 }}
 
+Example of the required shape:
+{{
+    "requirements": [
+        {{"requirement": "...", "page": 1, "file": "example.pdf"}}
+    ]
+}}
+
+Atomicity rule (important):
+- Each requirement item must state exactly ONE condition, spec line,
+  or clause. Never bundle multiple specs, fields, or clauses into a
+  single "requirement" string just because the source lists them
+  together (e.g. a spec table row, a semicolon-separated list, or a
+  bullet with sub-parts).
+- If a single sentence, bullet, or table row contains several distinct
+  specs (Processor, Memory, Storage, Display, Warranty, etc.) or
+  several distinct clauses, split it into one requirement item per
+  spec/clause, each on the same page/file.
+- Bad (do NOT do this):
+  "requirement": "Minimum Technical Specification: Processor: Intel
+  Core i5 or better; Memory: Minimum 16 GB RAM; Storage: Minimum 512
+  GB SSD; Warranty: Minimum 3 years onsite warranty"
+- Good (do this instead) — four separate items:
+  "requirement": "Processor: Intel Core i5 / AMD Ryzen 5 equivalent
+  or better"
+  "requirement": "Memory: Minimum 16 GB RAM"
+  "requirement": "Storage: Minimum 512 GB SSD"
+  "requirement": "Warranty: Minimum 3 years onsite warranty"
+- A shared heading (e.g. "Minimum Technical Specification") is context,
+  not a requirement itself — drop it rather than prefixing every item
+  with it.
+- Keep each item as short as possible while still preserving its exact
+  numbers, units, and conditions.
+
 Rules:
 - Extract only explicit buyer requirements.
 - Do not invent or infer requirements.
 - Preserve numbers, quantities, limits, standards and conditions.
 - Include the source PDF filename and exact page number.
-- If there are no requirements in this chunk, return [].
+- If there are no requirements in this chunk, return {{"requirements": []}}.
 - Do not create IDs. IDs will be assigned after consolidation.
 - Return JSON only.
 
@@ -155,13 +173,33 @@ def extract_chunk_requirements(llm, chunk):
             },
         ],
         temperature=0.1,
+        # Reserve explicit room for the JSON response instead of letting
+        # it compete with the input for whatever is left of n_ctx. Without
+        # this, a large chunk could leave the model almost no budget to
+        # write anything back, and grammar-constrained JSON decoding would
+        # just close out with an empty "[]"/"{}" rather than erroring.
+        max_tokens=4096,
         response_format={"type": "json_object"},
     )
 
     content = response["choices"][0]["message"]["content"]
-    data = json.loads(content)
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError as exc:
+        print(
+            "WARNING: could not parse requirement JSON for this chunk "
+            f"({exc}). Raw model output was:\n{content!r}"
+        )
+        return []
 
     if isinstance(data, list):
+        if not data:
+            print(
+                "WARNING: model returned an empty requirement list for "
+                "a non-empty chunk. If this keeps happening, the chunk "
+                "may still be too large for the model's context window."
+            )
         return data
 
     if isinstance(data, dict):
@@ -237,29 +275,22 @@ def detect_requirements(tender_dir):
 
     chunks = build_chunks(pages)
     llm = get_llm()
+    reset_context()
 
     extracted = []
 
     for index, chunk in enumerate(chunks, start=1):
-        print(
-            f"Requirement chunk {index}/{len(chunks)}"
-        )
-        extracted.extend(
-            extract_chunk_requirements(llm, chunk)
-        )
+        print(f"Requirement chunk {index}/{len(chunks)}")
+        reset_context()
+        extracted.extend(extract_chunk_requirements(llm, chunk))
 
     requirements = deduplicate(extracted)
 
     output_path = tender_dir / OUTPUT_FILENAME
     output_path.write_text(
-        json.dumps(
-            requirements,
-            indent=4,
-            ensure_ascii=False,
-        ),
+        json.dumps(requirements, indent=4, ensure_ascii=False),
         encoding="utf-8",
     )
-
     return requirements
 
 

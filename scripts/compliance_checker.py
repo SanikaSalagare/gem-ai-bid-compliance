@@ -2,29 +2,12 @@ from pathlib import Path
 import json
 import re
 
-from llama_cpp import Llama
+from scripts.model_manager import get_llm, reset_context
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = ROOT_DIR / "AI" / "models" / "Qwen3-8B-Q4_K_M.gguf"
 
 OUTPUT_FILENAME = "evaluation.json"
-MAX_CHUNK_CHARS = 12000
 
-_llm = None
-
-
-def get_llm():
-    global _llm
-
-    if _llm is None:
-        _llm = Llama(
-            model_path=str(MODEL_PATH),
-            n_gpu_layers=-1,
-            n_ctx=4096,
-            verbose=False,
-        )
-
-    return _llm
 
 
 def load_requirements(tender_dir):
@@ -143,15 +126,23 @@ Return ONLY valid JSON with exactly:
     "evidence": null
 }}
 
-Rules:
-- Score from 0 to 100.
-- 100 means the evidence clearly satisfies the requirement.
-- 0 means there is no supporting evidence or the evidence clearly fails.
-- Use intermediate scores for partial compliance or uncertainty.
-- Never invent evidence.
-- If evidence supports the requirement, return the exact source file and page.
+Scoring instructions:
+- Score must be an integer from 0 to 100.
+- Evaluate the requirement against the supplied seller evidence, not against assumptions.
+- 100: the seller evidence clearly and completely satisfies the requirement.
+- 90-99: essentially complete compliance with only a very minor gap.
+- 75-89: strong compliance but one meaningful detail is incomplete or uncertain.
+- 60-74: substantial but incomplete/partial compliance.
+- 40-59: mixed evidence; important parts are missing or unclear.
+- 20-39: weak evidence or substantial failure to meet the requirement.
+- 1-19: evidence exists but provides almost no compliance.
+- 0: no supporting evidence is present OR the evidence clearly contradicts/fails the requirement.
+- Do NOT treat compliance as a binary decision. Intermediate scores are expected whenever the evidence is incomplete, partially satisfies the requirement, or leaves reasonable uncertainty.
+- Do not default to 0 or 100 merely because the requirement is difficult.
+- Never invent evidence, specifications, certifications, pages, or facts.
+- If evidence supports the requirement, return the exact source file and page containing the strongest evidence.
 - If no useful evidence exists, use null for file, page and evidence.
-- Keep evidence short and quote/paraphrase only what is present.
+- Keep evidence concise and grounded in the supplied text.
 """
 
 
@@ -187,7 +178,7 @@ def evaluate_requirement(llm, requirement, pages):
                 ),
             },
         ],
-        temperature=0.1,
+        temperature=0.25,
         response_format={"type": "json_object"},
     )
 
@@ -243,6 +234,7 @@ def process_bid(tender_dir, bid_id):
         )
 
     llm = get_llm()
+    reset_context()
     evaluation = []
 
     for index, requirement in enumerate(
@@ -254,6 +246,7 @@ def process_bid(tender_dir, bid_id):
             f"{index}/{len(requirements)}"
         )
 
+        reset_context()
         evaluation.append(
             evaluate_requirement(
                 llm,

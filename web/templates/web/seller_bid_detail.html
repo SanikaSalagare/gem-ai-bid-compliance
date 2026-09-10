@@ -22,22 +22,21 @@
 </div>
 
 <div class="card">
-    <div class="card-header"><h2>Overall Compliance</h2></div>
-    {% if bid.evaluation_ready %}
-    <div class="compliance-summary">
-        <div class="compliance-score-ring" style="--pct: {{ bid.overall_score }};">
-            <div class="inner">
-                <strong>{{ bid.overall_score }}%</strong>
-                <span>Overall</span>
-            </div>
-        </div>
+    <div class="card-header"><h2>Compliance Analysis</h2></div>
+    {% if analysis_status and analysis_status.status == "queued" %}
+        <div class="queue-status queued"><strong>Queued</strong><span>Your bid is waiting for the next analysis slot.</span></div>
+    {% elif analysis_status and analysis_status.status == "processing" %}
+        <div class="queue-status processing"><strong>Processing</strong><span>Your bid is currently being analyzed.</span></div>
+    {% elif analysis_status and analysis_status.status == "failed" %}
+        <div class="queue-status failed"><strong>Analysis failed</strong><span>{{ analysis_status.error }}</span></div>
+    {% elif bid.evaluation_ready %}
+    <div class="score-summary"><div><span class="score-number">{{ bid.overall_score }}</span><span class="score-denom">/100</span></div><div><div class="score-label">{{ bid.overall_label }}</div><p class="card-subtle">AI-generated overall compliance score.</p></div></div>
         <div class="compliance-breakdown">
             <div class="breakdown-item"><span class="status-badge compliant"><span class="icon">&#10003;</span></span><span class="count">{{ bid.counts.COMPLIANT }}</span> Compliant</div>
             <div class="breakdown-item"><span class="status-badge partial"><span class="icon">&#9888;</span></span><span class="count">{{ bid.counts.PARTIALLY_COMPLIANT }}</span> Partial</div>
             <div class="breakdown-item"><span class="status-badge non-compliant"><span class="icon">&#10007;</span></span><span class="count">{{ bid.counts.NON_COMPLIANT }}</span> Non-Compliant</div>
             <div class="breakdown-item"><span class="status-badge missing"><span class="icon">!</span></span><span class="count">{{ bid.counts.MISSING }}</span> Missing</div>
         </div>
-    </div>
     {% else %}
     <div class="empty-state">
         <div class="icon">&#9203;</div>
@@ -87,7 +86,7 @@
         <tbody>
         {% for row in bid.rows %}
             <tr>
-                <td class="id-cell">REQ-{{ row.requirement.id|stringformat:"03d" }}<br><span class="muted-cell" style="font-weight:400;">{{ row.requirement.requirement|truncatechars:80 }}</span></td>
+                <td class="id-cell">REQ-{{ row.requirement.id|stringformat:"03d" }}<br><span class="muted-cell">{{ row.requirement.requirement|truncatechars:80 }}</span></td>
                 <td>{% include "web/partials/status_badge.html" with meta=row.status_meta %}</td>
                 <td>{% if row.evaluation and row.evaluation.evidence %}{{ row.evaluation.evidence|truncatechars:60 }}{% else %}<span class="muted-cell">No evidence found</span>{% endif %}</td>
             </tr>
@@ -96,5 +95,10 @@
     </table>
     </div>
 </div>
+{% endif %}
+{% if analysis_status and analysis_status.status == "queued" or analysis_status.status == "processing" %}
+<script>
+(function(){ const url="{% url 'analysis_status' tender_id bid.bid_id %}"; const poll=async()=>{ try{ const r=await fetch(url,{cache:"no-store"}); const d=await r.json(); if(d.status==="completed"||d.status==="failed"){location.reload();return;} }catch(e){} setTimeout(poll,2000); }; setTimeout(poll,2000); })();
+</script>
 {% endif %}
 {% endblock %}

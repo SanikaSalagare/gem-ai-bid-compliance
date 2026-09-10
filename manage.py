@@ -12,18 +12,52 @@ ROOT_DIR = Path(__file__).resolve().parent
 TENDERS_DIR = ROOT_DIR / "data" / "TENDERS"
 
 
-def create_tender():
+def create_tender(metadata=None):
     tender_id = f"tender_{uuid.uuid4().hex[:8]}"
     tender_dir = TENDERS_DIR / tender_id
 
-    (tender_dir / "tender_documents" / "processed").mkdir(
-        parents=True, exist_ok=True
-    )
-    (tender_dir / "bids").mkdir(
-        parents=True, exist_ok=True
-    )
+    (tender_dir / "tender_documents" / "processed").mkdir(parents=True, exist_ok=True)
+    (tender_dir / "bids").mkdir(parents=True, exist_ok=True)
 
+    metadata = metadata or {}
+    metadata.setdefault("title", "Untitled GeM Procurement")
+    metadata.setdefault("category", "General")
+    metadata.setdefault("quantity", "")
+    metadata.setdefault("bid_type", "Open Bid")
+    metadata.setdefault("delivery_period", "")
+    metadata.setdefault("bid_validity", "")
+    metadata.setdefault("emd_required", False)
+    metadata.setdefault("performance_security_required", False)
+    metadata.setdefault("eligibility", "")
+    metadata.setdefault("description", "")
+    metadata.setdefault("buyer_id", "buyer_001")
+
+    (tender_dir / "tender.json").write_text(
+        json.dumps(metadata, indent=4, ensure_ascii=False),
+        encoding="utf-8",
+    )
     return tender_id
+
+
+def get_tender_metadata(tender_id):
+    tender_dir = get_tender(tender_id)
+    if tender_dir is None:
+        return None
+    path = tender_dir / "tender.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def update_tender_metadata(tender_id, metadata):
+    tender_dir = get_tender(tender_id)
+    if tender_dir is None:
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
+    path = tender_dir / "tender.json"
+    path.write_text(json.dumps(metadata, indent=4, ensure_ascii=False), encoding="utf-8")
 
 
 def get_tender(tender_id):
@@ -172,7 +206,13 @@ def check_bid_compliance(tender_id, bid_id):
     if tender_dir is None:
         raise FileNotFoundError(f"Tender not found: {tender_id}")
 
-    return compliance_checker.process_bid(tender_dir, bid_id)
+    from scripts.compliance_queue import enqueue
+    return enqueue(tender_id, bid_id)
+
+
+def get_analysis_status(tender_id, bid_id):
+    from scripts.compliance_queue import get_status
+    return get_status(tender_id, bid_id)
 
 
 def process_bid(tender_id, bid_id):

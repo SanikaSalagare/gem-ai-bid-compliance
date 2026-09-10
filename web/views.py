@@ -2,11 +2,12 @@ from pathlib import Path
 import tempfile
 
 from django.contrib import messages
-from django.http import Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import redirect, render
 
 import manage
 from web import services
+from web.demo_accounts import BUYERS, SELLERS
 
 
 # ---------------------------------------------------------------------------
@@ -14,9 +15,16 @@ from web import services
 # ---------------------------------------------------------------------------
 
 def home(request):
-    return render(request, "web/home.html", {
-        "tenders": manage.list_tenders(),
-    })
+    return render(request, "web/home.html")
+
+
+def switch_account(request):
+    if request.method == "POST":
+        if request.POST.get("buyer_id") in {a["id"] for a in BUYERS}:
+            request.session["buyer_id"] = request.POST["buyer_id"]
+        if request.POST.get("seller_id") in {a["id"] for a in SELLERS}:
+            request.session["seller_id"] = request.POST["seller_id"]
+    return redirect(request.POST.get("next") or request.META.get("HTTP_REFERER") or "home")
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +60,6 @@ def buyer_dashboard(request):
     ready = sum(1 for s in summaries if s.requirements_ready)
 
     context = {
-        "tenders": summaries,
         "stats": {
             "total_tenders": len(summaries),
             "requirements_ready": ready,
@@ -91,10 +98,25 @@ def tender_list(request):
 
 def create_tender(request):
     if request.method == "POST":
-        tender_id = manage.create_tender()
+        metadata = {
+            "title": request.POST.get("title", "").strip() or "Untitled GeM Procurement",
+            "category": request.POST.get("category", "").strip() or "General",
+            "quantity": request.POST.get("quantity", "").strip(),
+            "bid_type": request.POST.get("bid_type", "Open Bid").strip(),
+            "delivery_period": request.POST.get("delivery_period", "").strip(),
+            "bid_validity": request.POST.get("bid_validity", "").strip(),
+            "emd_required": request.POST.get("emd_required") == "on",
+            "performance_security_required": request.POST.get("performance_security_required") == "on",
+            "eligibility": request.POST.get("eligibility", "").strip(),
+            "description": request.POST.get("description", "").strip(),
+            "buyer_id": request.session.get("buyer_id", BUYERS[0]["id"]),
+        }
+        tender_id = manage.create_tender(metadata)
         messages.success(request, f"Tender {tender_id} created.")
         return redirect("tender_detail", tender_id=tender_id)
-    return redirect("tender_list")
+    return render(request, "web/tender_create.html", {
+        "active_nav": "tenders",
+    })
 
 
 def tender_detail(request, tender_id):
@@ -128,7 +150,7 @@ def upload_tender_document(request, tender_id):
         except (FileNotFoundError, ValueError) as exc:
             messages.error(request, str(exc))
 
-    return redirect(f"/buyer/tenders/{tender_id}/?tab=documents")
+    return redirect(f"{redirect('tender_detail', tender_id=tender_id).url}?tab=documents")
 
 
 def process_tender(request, tender_id):
@@ -142,7 +164,7 @@ def process_tender(request, tender_id):
         except Exception as exc:  # backend processing failure, not a frontend bug
             messages.error(request, f"Processing failed: {exc}")
 
-    return redirect(f"/buyer/tenders/{tender_id}/?tab=requirements")
+    return redirect(f"{redirect('tender_detail', tender_id=tender_id).url}?tab=requirements")
 
 
 def requirement_detail(request, tender_id, requirement_id):
@@ -175,6 +197,7 @@ def bid_detail(request, tender_id, bid_id):
     return render(request, "web/bid_detail.html", {
         "tender_id": tender_id,
         "bid": summary,
+        "analysis_status": manage.get_analysis_status(tender_id, bid_id),
         "active_nav": "tenders",
     })
 
@@ -185,10 +208,10 @@ def process_bid(request, tender_id, bid_id):
 
     if request.method == "POST":
         try:
-            manage.process_bid(tender_id, bid_id)
-            messages.success(request, "Bid documents processed and compliance evaluated.")
+            job = manage.check_bid_compliance(tender_id, bid_id)
+            messages.success(request, f"Compliance analysis queued as {job['job_id']}.")
         except Exception as exc:
-            messages.error(request, f"Processing failed: {exc}")
+            messages.error(request, f"Could not queue analysis: {exc}")
 
     return redirect("bid_detail", tender_id=tender_id, bid_id=bid_id)
 
@@ -237,8 +260,37 @@ def document_viewer(request, tender_id, filename, bid_id=None):
         "pages": pages,
         "processed": services.is_document_processed(tender_id, filename, bid_id),
         "requested_page": requested_page,
+        "view": request.GET.get("view", "text"),
         "active_nav": "tenders",
     })
+
+
+def document_pdf(request, tender_id, filename, bid_id=None):
+    if bid_id is None:
+        tender_dir = manage.get_tender(tender_id)
+        if tender_dir is None:
+            raise Http404("Tender not found")
+        document_dir = tender_dir / "tender_documents"
+    else:
+        bid_dir = manage.get_bid(tender_id, bid_id)
+        if bid_dir is None:
+            raise Http404("Bid not found")
+        document_dir = bid_dir / "documents"
+
+    pdf_path = (document_dir / filename).resolve()
+    try:
+        pdf_path.relative_to(document_dir.resolve())
+    except ValueError:
+        raise Http404("Document not found")
+    if not pdf_path.is_file() or pdf_path.suffix.lower() != ".pdf":
+        raise Http404("Document not found")
+    return FileResponse(pdf_path.open("rb"), content_type="application/pdf")
+
+
+def analysis_status(request, tender_id, bid_id):
+    if manage.get_bid(tender_id, bid_id) is None:
+        raise Http404("Bid not found")
+    return JsonResponse(manage.get_analysis_status(tender_id, bid_id) or {"status": "not_started"})
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +346,7 @@ def seller_bid_detail(request, tender_id, bid_id):
     return render(request, "web/seller_bid_detail.html", {
         "tender_id": tender_id,
         "bid": summary,
+        "analysis_status": manage.get_analysis_status(tender_id, bid_id),
         "active_nav": "seller",
     })
 
@@ -312,5 +365,4 @@ def seller_upload_bid_document(request, tender_id, bid_id):
     return redirect("seller_bid_detail", tender_id=tender_id, bid_id=bid_id)
 
 
-def seller_process_bid(request, tender_id, bid_id):
-    return process_bid(request, tender_id, bid_id)
+

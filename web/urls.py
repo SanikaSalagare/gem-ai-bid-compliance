@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("account/switch/", views.switch_account, name="switch_account"),
 
     # Buyer portal ----------------------------------------------------
     path("buyer/", views.buyer_dashboard, name="buyer_dashboard"),
@@ -15,11 +16,8 @@ urlpatterns = [
         views.upload_tender_document,
         name="upload_tender_document",
     ),
-    path(
-        "buyer/tenders/<str:tender_id>/documents/<str:filename>/",
-        views.document_viewer,
-        name="tender_document_viewer",
-    ),
+    path("buyer/tenders/<str:tender_id>/documents/<str:filename>/", views.document_viewer, name="tender_document_viewer"),
+    path("buyer/tenders/<str:tender_id>/documents/<str:filename>/pdf/", views.document_pdf, name="tender_document_pdf"),
     path(
         "buyer/tenders/<str:tender_id>/requirements/<int:requirement_id>/",
         views.requirement_detail,
@@ -35,11 +33,9 @@ urlpatterns = [
         views.process_bid,
         name="process_bid",
     ),
-    path(
-        "buyer/tenders/<str:tender_id>/bids/<str:bid_id>/documents/<str:filename>/",
-        views.document_viewer,
-        name="bid_document_viewer",
-    ),
+    path("buyer/tenders/<str:tender_id>/bids/<str:bid_id>/documents/<str:filename>/", views.document_viewer, name="bid_document_viewer"),
+    path("buyer/tenders/<str:tender_id>/bids/<str:bid_id>/documents/<str:filename>/pdf/", views.document_pdf, name="bid_document_pdf"),
+    path("buyer/tenders/<str:tender_id>/bids/<str:bid_id>/analysis-status/", views.analysis_status, name="analysis_status"),
     path(
         "buyer/tenders/<str:tender_id>/bids/<str:bid_id>/compliance/<int:requirement_id>/",
         views.compliance_detail,
@@ -66,7 +62,7 @@ urlpatterns = [
     ),
     path(
         "seller/tenders/<str:tender_id>/bids/<str:bid_id>/process/",
-        views.seller_process_bid,
+        views.process_bid,
         name="seller_process_bid",
     ),
 ]

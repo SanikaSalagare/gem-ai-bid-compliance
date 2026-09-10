@@ -7,10 +7,7 @@
         <p class="lead">Overview of your tenders, extracted requirements and seller compliance.</p>
     </div>
     <div class="header-actions">
-        <form method="post" action="{% url 'create_tender' %}">
-            {% csrf_token %}
-            <button type="submit" class="button primary">+ Create Tender</button>
-        </form>
+        <a class="button primary" href="{% url 'create_tender' %}">+ Create Tender</a>
     </div>
 </div>
 

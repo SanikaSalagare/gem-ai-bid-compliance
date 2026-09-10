@@ -10,7 +10,7 @@
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>{{ tender.tender_id }}</h1>
+        <h1>{{ tender.metadata.title|default:tender.tender_id }}</h1>
         <p class="lead">
             {% if tender.requirements_ready %}
                 <span class="status-badge compliant"><span class="icon">&#10003;</span>Requirements Ready</span>
@@ -36,12 +36,26 @@
 
 {% if tab == "overview" %}
     <div class="stat-grid">
-        <div class="stat-card"><span class="stat-label">Requirements</span><span class="stat-value">{{ tender.requirement_count }}</span></div>
-        <div class="stat-card"><span class="stat-label">Tender Documents</span><span class="stat-value">{{ tender.documents|length }}</span></div>
+        <div class="stat-card"><span class="stat-label">GeM Category</span><span class="stat-value stat-text">{{ tender.metadata.category|default:"—" }}</span></div>
+        <div class="stat-card"><span class="stat-label">Quantity</span><span class="stat-value stat-text">{{ tender.metadata.quantity|default:"—" }}</span></div>
+        <div class="stat-card"><span class="stat-label">Delivery</span><span class="stat-value stat-text">{{ tender.metadata.delivery_period|default:"—" }}</span></div>
         <div class="stat-card"><span class="stat-label">Bids Received</span><span class="stat-value">{{ tender.bid_count }}</span></div>
     </div>
     <div class="card">
-        <div class="card-header"><h2>Summary</h2></div>
+        <div class="card-header"><h2>Tender Information</h2></div>
+        <div class="metadata-grid">
+            <div><span>Tender ID</span><strong>{{ tender.tender_id }}</strong></div>
+            <div><span>Bid type</span><strong>{{ tender.metadata.bid_type|default:"—" }}</strong></div>
+            <div><span>Bid validity</span><strong>{{ tender.metadata.bid_validity|default:"—" }}</strong></div>
+            <div><span>EMD</span><strong>{% if tender.metadata.emd_required %}Required{% else %}Not specified{% endif %}</strong></div>
+            <div><span>Performance security</span><strong>{% if tender.metadata.performance_security_required %}Required{% else %}Not specified{% endif %}</strong></div>
+            <div><span>Buyer</span><strong>{{ tender.metadata.buyer_id|default:"buyer_001" }}</strong></div>
+        </div>
+        {% if tender.metadata.description %}<p class="tender-description">{{ tender.metadata.description }}</p>{% endif %}
+        {% if tender.metadata.eligibility %}<div class="detail-block"><h4>Eligibility</h4><p>{{ tender.metadata.eligibility }}</p></div>{% endif %}
+    </div>
+    <div class="card">
+        <div class="card-header"><h2>Workflow</h2></div>
         {% if tender.requirements_ready %}
             <p>Requirements have been extracted from the uploaded tender documents. Review them in the <a class="text-link" href="?tab=requirements">Requirements</a> tab, or open a bid to inspect compliance.</p>
         {% else %}
