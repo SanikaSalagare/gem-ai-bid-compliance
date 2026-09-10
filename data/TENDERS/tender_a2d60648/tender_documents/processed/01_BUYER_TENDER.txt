@@ -1,0 +1,69 @@
+HASH: 12c024842ea4ba1f2ec420af4da3aa7e2b88473064a63d5f75b5adf8dcece8be
+SOURCE: 01_BUYER_TENDER.pdf
+PDF TYPE: DIGITAL
+PROCESSED: 2026-09-09T20:35:57.957964+00:00
+
+<[PAGE 1]>
+BUYER TENDER DOCUMENT
+Synthetic GeM-style test tender | Reference SYN-GEM-TEST-2026-001
+Important Notice
+SYNTHETIC TEST DATA — NOT A REAL GOVERNMENT/GeM DOCUMENT. Created solely
+for AI document-processing, extraction, comparison, and workflow testing.
+Tender Overview
+Tender Reference: SYN-GEM-TEST-2026-001
+Tender Title: Supply of Business Laptops for Internal Training
+Buyer: Meridian Public Research Institute (Synthetic Entity)
+Bid Type: Single-stage, two-cover style test scenario
+Quantity: 25 laptops
+Indicative procurement value: ₹18,75,000
+Bid validity: 90 days
+Delivery requirement: Within 30 days of purchase order
+Scope of Supply
+Supply, delivery, unpacking and basic setup of 25 business laptops. The supplier shall provide
+standard chargers, operating system licences, warranty documentation and serial -number-wise
+packing lists.
+Minimum Technical Specification
+• Processor: Intel Core i5 / AMD Ryzen 5 equivalent or better
+• Memory: Minimum 16 GB RAM
+• Storage: Minimum 512 GB SSD
+• Display: 14-inch or larger, Full HD or better
+• Connectivity: Wi-Fi 6, Bluetooth, minimum 2 USB ports, HDMI or equivalent display output
+• Operating system: Genuine Windows 11 Pro or equivalent business OS
+• Warranty: Minimum 3 years onsite warranty
+• Keyboard: English, full-size or compact business layout
+• Accessories: Original AC adapter and power cable for every unit
+Eligibility Criteria
+• Seller must be legally registered and authorised to supply the quoted product.
+• Seller must provide manufacturer/brand authorisation where applicable.
+• Seller shall confirm that all supplied units are new and unused.
+• Seller must accept the stated delivery and warranty requirements.
+• All quoted prices must include applicable taxes, freight and standard delivery charges unless
+explicitly itemised.
+
+<[PAGE 2]>
+Evaluation Criteria
+Technical compliance will be assessed first. Among technically compliant bids, the evaluated total
+price will be considered for commercial comparison. In this synthetic test set, the buyer may also
+compare warranty, delivery commitment and deviations.
+Commercial Terms
+• Payment: 100% after delivery, inspection and acceptance, subject to applicable statutory
+deductions.
+• Liquidated damages: Test scenario assumes 0.5% of delayed portion per week, subject to a
+maximum of 10%.
+• Warranty: Minimum 3 years onsite.
+• Delivery location: Meridian Public Research Institute, Bengaluru, Karnataka (synthetic
+location for testing).
+• Prices shall remain firm during the bid validity period.
+Bid Submission Checklist
+• Signed technical bid
+• Commercial/financial bid
+• Product datasheet
+• Manufacturer authorisation, if applicable
+• Warranty undertaking
+• Delivery commitment
+Annexure A — Price Schedule
+Quantity: 25
+Required unit: Laptop
+Bidder shall quote unit price, taxes, freight/other charges, and total landed price.
+The synthetic bids supplied with this test package contain intentionally different prices and
+commercial terms for comparison testing.

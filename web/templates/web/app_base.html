@@ -1,0 +1,48 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GeM Compliance Platform{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'web/style.css' %}">
+</head>
+<body>
+<div class="app-shell">
+    <aside class="app-sidebar">
+        <div class="brand"><a href="/" style="color:inherit;text-decoration:none;">GeM<span>Verify</span></a></div>
+
+        {% if active_nav == "seller" %}
+            <div class="side-group">
+                <div class="side-group-label">Seller</div>
+                <a class="side-link {% if active_nav == 'seller' %}active{% endif %}" href="{% url 'seller_dashboard' %}">Open Tenders</a>
+            </div>
+        {% else %}
+            <div class="side-group">
+                <div class="side-group-label">Buyer</div>
+                <a class="side-link {% if active_nav == 'dashboard' %}active{% endif %}" href="{% url 'buyer_dashboard' %}">Dashboard</a>
+                <a class="side-link {% if active_nav == 'tenders' %}active{% endif %}" href="{% url 'tender_list' %}">All Tenders</a>
+                <a class="side-link {% if active_nav == 'tenders' and status_filter == 'ready' %}active{% endif %}" href="{% url 'tender_list' %}?status=ready">Requirements Ready</a>
+            </div>
+        {% endif %}
+
+        <div class="side-group">
+            <div class="side-group-label">Switch Portal</div>
+            <a class="side-link" href="{% url 'buyer_dashboard' %}">Buyer Portal</a>
+            <a class="side-link" href="{% url 'seller_dashboard' %}">Seller Portal</a>
+        </div>
+    </aside>
+
+    <div class="app-main">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert {% if message.tags == 'error' %}error{% else %}success{% endif %}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        {% block breadcrumbs %}{% endblock %}
+        {% block content %}{% endblock %}
+    </div>
+</div>
+</body>
+</html>

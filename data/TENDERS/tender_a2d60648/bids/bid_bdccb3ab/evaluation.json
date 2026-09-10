@@ -1,0 +1,233 @@
+[
+    {
+        "id": 1,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted Quantity: 25 laptops, Standard charger and operating system licence included. Delivery: 28 days."
+    },
+    {
+        "id": 2,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Standard charger and operating system licence included."
+    },
+    {
+        "id": 3,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Intel Core i5 / AMD Ryzen 5 equivalent processor"
+    },
+    {
+        "id": 4,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted Configuration: 16 GB RAM"
+    },
+    {
+        "id": 5,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted Configuration: 512 GB SSD"
+    },
+    {
+        "id": 6,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted Configuration: Business laptop, 14-inch Full HD display"
+    },
+    {
+        "id": 7,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "• Wi-Fi 6 and Bluetooth"
+    },
+    {
+        "id": 8,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Windows 11 Pro is explicitly listed in the Quoted Configuration."
+    },
+    {
+        "id": 9,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Warranty: 3 years onsite"
+    },
+    {
+        "id": 10,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted Configuration: Business laptop, 14-inch Full HD display"
+    },
+    {
+        "id": 11,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Original power adapter"
+    },
+    {
+        "id": 12,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Document Status: SYNTHETIC TEST DATA — NOT A REAL COMMERCIAL OFFER."
+    },
+    {
+        "id": 13,
+        "score": 0,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Seller 1: None."
+    },
+    {
+        "id": 14,
+        "score": 0,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Seller confirms that the proposed laptop configuration meets the buyer's minimum requirements, including original power adapter."
+    },
+    {
+        "id": 15,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Technical Compliance Statement confirms the proposed laptop configuration meets the buyer's minimum requirements. Warranty & Service states: 'Proposed warranty: 3 years onsite. Proposed delivery: 28 days.'"
+    },
+    {
+        "id": 16,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Price Inclusions: Applicable taxes assumed included in the quoted total for this test scenario. Standard freight and delivery included."
+    },
+    {
+        "id": 17,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Technical Compliance Statement confirms full compliance with buyer's requirements."
+    },
+    {
+        "id": 18,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Proposed warranty: 3 years onsite. Proposed delivery: 28 days."
+    },
+    {
+        "id": 19,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Payment: As per buyer tender terms."
+    },
+    {
+        "id": 20,
+        "score": 0,
+        "file": null,
+        "page": null,
+        "evidence": null
+    },
+    {
+        "id": 21,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Proposed warranty: 3 years onsite."
+    },
+    {
+        "id": 22,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Seller document states 'Standard freight and delivery included.' However, the requirement specifies a delivery location of 'Meridian Public Research Institute, Bengaluru, Karnataka' which is not mentioned in the seller's evidence."
+    },
+    {
+        "id": 23,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "The seller's financial bid states 'Price Inclusions: Applicable taxes assumed included in the quoted total for this test scenario.' However, it does not explicitly state that prices shall remain firm during the bid validity period."
+    },
+    {
+        "id": 24,
+        "score": 0,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "The technical bid includes a signed document by Synthetic Signatory 1 as Bid Manager."
+    },
+    {
+        "id": 25,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Document Status: SYNTHETIC TEST DATA — NOT A REAL COMMERCIAL OFFER."
+    },
+    {
+        "id": 26,
+        "score": 0,
+        "file": null,
+        "page": null,
+        "evidence": null
+    },
+    {
+        "id": 27,
+        "score": 0,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "The document states 'SYNTHETIC TEST DATA — NOT A REAL COMMERCIAL OFFER.' This indicates the bid is not a genuine commercial offer, implying no manufacturer authorisation is provided."
+    },
+    {
+        "id": 28,
+        "score": 100,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Proposed warranty: 3 years onsite."
+    },
+    {
+        "id": 29,
+        "score": 0,
+        "file": "02_SELLER_1_TECHNICAL_BID.pdf",
+        "page": 1,
+        "evidence": "Proposed delivery: 28 days"
+    },
+    {
+        "id": 30,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted total for 25 units: ₹17,12,500"
+    },
+    {
+        "id": 31,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted unit price: ₹68,500. Quantity: 25 laptops. Quoted total for 25 units: ₹17,12,500."
+    },
+    {
+        "id": 32,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Quoted unit price: ₹68,500. Quoted total for 25 units: ₹17,12,500. Price Inclusions: Applicable taxes assumed included in the quoted total... Standard freight and delivery included."
+    },
+    {
+        "id": 33,
+        "score": 100,
+        "file": "02_SELLER_1_FINANCIAL_BID.pdf",
+        "page": 1,
+        "evidence": "Document Status: SYNTHETIC TEST DATA — NOT A REAL COMMERCIAL OFFER."
+    }
+]

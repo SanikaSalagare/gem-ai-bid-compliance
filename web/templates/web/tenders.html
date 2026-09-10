@@ -1,0 +1,60 @@
+{% extends "web/app_base.html" %}
+{% block title %}Tenders{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Tenders</h1>
+        <p class="lead">All tenders in the system.</p>
+    </div>
+    <div class="header-actions">
+        <form method="post" action="{% url 'create_tender' %}">
+            {% csrf_token %}
+            <button type="submit" class="button primary">+ Create Tender</button>
+        </form>
+    </div>
+</div>
+
+<form method="get" class="toolbar">
+    <input type="search" name="q" placeholder="Search tender ID..." value="{{ query }}">
+    <select name="status">
+        <option value="" {% if status_filter == "" %}selected{% endif %}>All statuses</option>
+        <option value="ready" {% if status_filter == "ready" %}selected{% endif %}>Requirements Ready</option>
+        <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>Awaiting Processing</option>
+    </select>
+    <button type="submit" class="button secondary">Apply</button>
+</form>
+
+<div class="card">
+    {% if tenders %}
+    <div class="data-table-wrap">
+    <table class="data-table">
+        <thead>
+            <tr><th>Tender ID</th><th>Requirements</th><th>Bids</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for tender in tenders %}
+            <tr>
+                <td class="id-cell">{{ tender.tender_id }}</td>
+                <td>{{ tender.requirement_count }}</td>
+                <td>{{ tender.bid_count }}</td>
+                <td>
+                    {% if tender.requirements_ready %}
+                        <span class="status-badge compliant"><span class="icon">&#10003;</span>Requirements Ready</span>
+                    {% else %}
+                        <span class="status-badge pending"><span class="icon">&#9675;</span>Awaiting Processing</span>
+                    {% endif %}
+                </td>
+                <td><a class="button small" href="{% url 'tender_detail' tender.tender_id %}">View</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">&#128269;</div>
+        <p>No tenders match your search.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

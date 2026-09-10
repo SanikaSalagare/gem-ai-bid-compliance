@@ -1,0 +1,42 @@
+HASH: 52a9f96058c13a0998a8b6496c1d4de6aa7462c321cea8816c6fc62b9783d8d3
+SOURCE: 02_SELLER_1_TECHNICAL_BID.pdf
+PDF TYPE: DIGITAL
+PROCESSED: 2026-09-09T20:41:20.134856+00:00
+
+<[PAGE 1]>
+SELLER 1 — TECHNICAL BID
+Asterbyte Systems Pvt. Ltd. | Synthetic test bid
+Document Status
+SYNTHETIC TEST DATA — NOT A REAL SELLER BID. Created solely for AI testing.
+Bidder Details
+Seller: Asterbyte Systems Pvt. Ltd.
+Bid Reference: SYN-S1-2026-001
+Tender Reference: SYN-GEM-TEST-2026-001
+Bid Validity: 90 days
+Technical Compliance Statement
+We, Asterbyte Systems Pvt. Ltd., submit this synthetic technical response for testing purposes.
+We confirm that the proposed laptop configuration meets the buyer's minimum processor,
+memory, storage, display and connectivity requirements. Status: Fully compliant.
+Quoted Configuration
+• Business laptop, 14-inch Full HD display
+• Intel Core i5 / AMD Ryzen 5 equivalent processor
+• 16 GB RAM
+• 512 GB SSD
+• Windows 11 Pro
+• Wi-Fi 6 and Bluetooth
+• Original power adapter
+Warranty & Service
+Proposed warranty: 3 years onsite. Proposed delivery: 28 days.
+Exceptions / Deviations
+Seller 1: None.
+Seller 2: No material technical deviation; enhanced year-1 accidental-damage coverage offered.
+Seller 3: Delivery is 5 days beyond the buyer's 30-day requirement; warranty is carry-in rather
+than onsite.
+Authorised Signatory
+Name: Synthetic Signatory 1
+Designation: Bid Manager
+
+<[PAGE 2]>
+Company: Asterbyte Systems Pvt. Ltd.
+Signature: ____________________
+Date: 10 September 2026

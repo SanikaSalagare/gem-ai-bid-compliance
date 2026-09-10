@@ -1,0 +1,142 @@
+{% extends "web/app_base.html" %}
+{% block title %}Tender {{ tender.tender_id }}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
+    <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
+    <span class="current">{{ tender.tender_id }}</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>{{ tender.tender_id }}</h1>
+        <p class="lead">
+            {% if tender.requirements_ready %}
+                <span class="status-badge compliant"><span class="icon">&#10003;</span>Requirements Ready</span>
+            {% else %}
+                <span class="status-badge pending"><span class="icon">&#9675;</span>Awaiting Processing</span>
+            {% endif %}
+        </p>
+    </div>
+    <div class="header-actions">
+        <form method="post" action="{% url 'process_tender' tender.tender_id %}" onsubmit="return confirm('Run document processing and requirement extraction? This can take a while.');">
+            {% csrf_token %}
+            <button type="submit" class="button primary">Process Documents</button>
+        </form>
+    </div>
+</div>
+
+<div class="tabs">
+    <a class="tab-link {% if tab == 'overview' %}active{% endif %}" href="?tab=overview">Overview</a>
+    <a class="tab-link {% if tab == 'requirements' %}active{% endif %}" href="?tab=requirements">Requirements ({{ tender.requirement_count }})</a>
+    <a class="tab-link {% if tab == 'documents' %}active{% endif %}" href="?tab=documents">Documents ({{ tender.documents|length }})</a>
+    <a class="tab-link {% if tab == 'bids' %}active{% endif %}" href="?tab=bids">Bids ({{ tender.bid_count }})</a>
+</div>
+
+{% if tab == "overview" %}
+    <div class="stat-grid">
+        <div class="stat-card"><span class="stat-label">Requirements</span><span class="stat-value">{{ tender.requirement_count }}</span></div>
+        <div class="stat-card"><span class="stat-label">Tender Documents</span><span class="stat-value">{{ tender.documents|length }}</span></div>
+        <div class="stat-card"><span class="stat-label">Bids Received</span><span class="stat-value">{{ tender.bid_count }}</span></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h2>Summary</h2></div>
+        {% if tender.requirements_ready %}
+            <p>Requirements have been extracted from the uploaded tender documents. Review them in the <a class="text-link" href="?tab=requirements">Requirements</a> tab, or open a bid to inspect compliance.</p>
+        {% else %}
+            <p>This tender's documents haven't been processed yet. Upload documents in the <a class="text-link" href="?tab=documents">Documents</a> tab, then run processing to extract requirements.</p>
+        {% endif %}
+    </div>
+
+{% elif tab == "requirements" %}
+    <div class="card">
+        {% if tender.requirements %}
+        <div class="data-table-wrap">
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Requirement</th><th>Source</th><th></th></tr></thead>
+            <tbody>
+            {% for req in tender.requirements %}
+                <tr>
+                    <td class="id-cell">REQ-{{ req.id|stringformat:"03d" }}</td>
+                    <td>{{ req.requirement }}</td>
+                    <td class="muted-cell">{{ req.file|default:"—" }}{% if req.page %}, page {{ req.page }}{% endif %}</td>
+                    <td><a class="button small" href="{% url 'requirement_detail' tender.tender_id req.id %}">View</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">&#128203;</div>
+            <p>No requirements extracted yet. Upload tender documents and run processing.</p>
+        </div>
+        {% endif %}
+    </div>
+
+{% elif tab == "documents" %}
+    <div class="card">
+        <div class="card-header">
+            <h2>Tender Documents</h2>
+        </div>
+        <form method="post" action="{% url 'upload_tender_document' tender.tender_id %}" enctype="multipart/form-data" class="inline-form" style="margin-bottom:18px;">
+            {% csrf_token %}
+            <div class="file-input-wrap">
+                <input type="file" name="document" accept="application/pdf" required>
+            </div>
+            <button type="submit" class="button primary">Upload PDF</button>
+        </form>
+
+        {% if tender.documents %}
+        <div class="data-table-wrap">
+        <table class="data-table">
+            <thead><tr><th>File</th><th></th></tr></thead>
+            <tbody>
+            {% for doc in tender.documents %}
+                <tr>
+                    <td>{{ doc }}</td>
+                    <td><a class="button small" href="{% url 'tender_document_viewer' tender.tender_id doc %}">Inspect</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">&#128196;</div>
+            <p>No documents uploaded yet.</p>
+        </div>
+        {% endif %}
+    </div>
+
+{% elif tab == "bids" %}
+    <div class="card">
+        {% if bids %}
+        <div class="data-table-wrap">
+        <table class="data-table">
+            <thead><tr><th>Bid ID</th><th>Compliance</th><th>Compliant</th><th>Partial</th><th>Non-Compliant</th><th>Missing</th><th></th></tr></thead>
+            <tbody>
+            {% for bid in bids %}
+                <tr>
+                    <td class="id-cell">{{ bid.bid_id }}</td>
+                    <td>{% if bid.evaluation_ready %}{{ bid.overall_score }}%{% else %}<span class="status-badge pending"><span class="icon">&#9675;</span>Not Evaluated</span>{% endif %}</td>
+                    <td>{{ bid.counts.COMPLIANT }}</td>
+                    <td>{{ bid.counts.PARTIALLY_COMPLIANT }}</td>
+                    <td>{{ bid.counts.NON_COMPLIANT }}</td>
+                    <td>{{ bid.counts.MISSING }}</td>
+                    <td><a class="button small" href="{% url 'bid_detail' tender.tender_id bid.bid_id %}">View Bid</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="icon">&#128188;</div>
+            <p>No bids submitted yet for this tender.</p>
+        </div>
+        {% endif %}
+    </div>
+{% endif %}
+{% endblock %}

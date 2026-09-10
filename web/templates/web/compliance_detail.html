@@ -1,0 +1,64 @@
+{% extends "web/app_base.html" %}
+{% block title %}Compliance REQ-{{ row.requirement.id }}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
+    <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
+    <a href="{% url 'tender_detail' tender_id %}">{{ tender_id }}</a><span class="sep">/</span>
+    <a href="{% url 'bid_detail' tender_id bid_id %}">{{ bid_id }}</a><span class="sep">/</span>
+    <span class="current">REQ-{{ row.requirement.id|stringformat:"03d" }}</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>REQ-{{ row.requirement.id|stringformat:"03d" }}</h1>
+        <p class="lead">{% include "web/partials/status_badge.html" with meta=row.status_meta %}</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="detail-grid">
+        <div class="detail-block">
+            <h4>Buyer Requirement</h4>
+            <p>{{ row.requirement.requirement }}</p>
+        </div>
+        <div class="detail-block">
+            <h4>Seller Evidence</h4>
+            {% if row.evaluation and row.evaluation.evidence %}
+                <p>{{ row.evaluation.evidence }}</p>
+            {% else %}
+                <p class="card-subtle">No evidence available.</p>
+            {% endif %}
+        </div>
+        <div class="detail-block">
+            <h4>Compliance Score</h4>
+            {% if row.evaluation and row.evaluation.score is not None %}
+                <p>{{ row.evaluation.score }} / 100</p>
+            {% else %}
+                <p class="card-subtle">Not yet evaluated.</p>
+            {% endif %}
+        </div>
+        <div class="detail-block">
+            <h4>Requirement Source</h4>
+            {% if row.requirement.file %}
+                <a class="source-pill" href="{% url 'tender_document_viewer' tender_id row.requirement.file %}?page={{ row.requirement.page }}">
+                    &#128196; {{ row.requirement.file }}{% if row.requirement.page %} &middot; Page {{ row.requirement.page }}{% endif %}
+                </a>
+            {% else %}
+                <p class="card-subtle">No source recorded.</p>
+            {% endif %}
+        </div>
+        <div class="detail-block">
+            <h4>Evidence Source</h4>
+            {% if row.evaluation and row.evaluation.file %}
+                <a class="source-pill" href="{% url 'bid_document_viewer' tender_id bid_id row.evaluation.file %}?page={{ row.evaluation.page }}">
+                    &#128196; {{ row.evaluation.file }}{% if row.evaluation.page %} &middot; Page {{ row.evaluation.page }}{% endif %}
+                </a>
+            {% else %}
+                <p class="card-subtle">No evidence source available.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

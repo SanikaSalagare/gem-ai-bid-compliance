@@ -19,5 +19,5 @@ echo.
 echo.
 nvcc --version
 
-python manage.py
+python runserver.py runserver
 pause

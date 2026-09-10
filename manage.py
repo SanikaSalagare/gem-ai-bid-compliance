@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import uuid
+import shutil
 
 from scripts import text_extractor
 from scripts import requirement_detector
@@ -13,17 +14,13 @@ TENDERS_DIR = ROOT_DIR / "data" / "TENDERS"
 
 def create_tender():
     tender_id = f"tender_{uuid.uuid4().hex[:8]}"
-
     tender_dir = TENDERS_DIR / tender_id
 
-    (tender_dir / "tender_documents").mkdir(
-        parents=True,
-        exist_ok=True
+    (tender_dir / "tender_documents" / "processed").mkdir(
+        parents=True, exist_ok=True
     )
-
     (tender_dir / "bids").mkdir(
-        parents=True,
-        exist_ok=True
+        parents=True, exist_ok=True
     )
 
     return tender_id
@@ -31,354 +28,189 @@ def create_tender():
 
 def get_tender(tender_id):
     tender_dir = TENDERS_DIR / tender_id
-
-    if not tender_dir.exists():
-        return None
-
-    return tender_dir
+    return tender_dir if tender_dir.exists() and tender_dir.is_dir() else None
 
 
 def list_tenders():
     if not TENDERS_DIR.exists():
         return []
-
-    return [
-        folder.name
-        for folder in TENDERS_DIR.iterdir()
+    return sorted(
+        folder.name for folder in TENDERS_DIR.iterdir()
         if folder.is_dir()
-    ]
+    )
 
 
 def delete_tender(tender_id):
-    import shutil
-
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
         return False
-
     shutil.rmtree(tender_dir)
-
     return True
 
 
 def add_tender_document(tender_id, file_path):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
     source = Path(file_path)
-
     if not source.exists():
-        raise FileNotFoundError(
-            f"File not found: {file_path}"
-        )
+        raise FileNotFoundError(f"File not found: {file_path}")
 
-    destination = (
-        tender_dir
-        / "tender_documents"
-        / source.name
-    )
+    if source.suffix.lower() != ".pdf":
+        raise ValueError("Tender documents must be PDF files.")
 
-    destination.write_bytes(
-        source.read_bytes()
-    )
+    documents_dir = tender_dir / "tender_documents"
+    documents_dir.mkdir(parents=True, exist_ok=True)
 
+    destination = documents_dir / source.name
+    shutil.copy2(source, destination)
     return destination
 
 
 def process_tender_documents(tender_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
-    text_extractor.process_tender(
-        tender_dir
-    )
-
+    text_extractor.process_tender(tender_dir)
     return True
 
 
 def generate_requirements(tender_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
-    requirements = (
-        requirement_detector.process_tender(
-            tender_dir
-        )
-    )
-
-    return requirements
+    return requirement_detector.process_tender(tender_dir)
 
 
 def process_tender(tender_id):
     process_tender_documents(tender_id)
-
-    requirements = generate_requirements(
-        tender_id
-    )
-
-    return requirements
+    return generate_requirements(tender_id)
 
 
 def get_requirements(tender_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
-    requirements_path = (
-        tender_dir / "req.json"
-    )
-
+    requirements_path = tender_dir / "requirement.json"
     if not requirements_path.exists():
         return None
 
-    with open(
-        requirements_path,
-        "r",
-        encoding="utf-8"
-    ) as file:
-        return json.load(file)
+    return json.loads(requirements_path.read_text(encoding="utf-8"))
 
 
 def create_bid(tender_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
-    seller_id = f"seller_{uuid.uuid4().hex[:8]}"
+    bid_id = f"bid_{uuid.uuid4().hex[:8]}"
+    bid_dir = tender_dir / "bids" / bid_id / "documents"
+    bid_dir.mkdir(parents=True, exist_ok=True)
 
-    seller_dir = (
-        tender_dir
-        / "bids"
-        / seller_id
-    )
-
-    seller_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    return seller_id
+    return bid_id
 
 
-def get_bid(tender_id, seller_id):
+def get_bid(tender_id, bid_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
         return None
 
-    seller_dir = (
-        tender_dir
-        / "bids"
-        / seller_id
-    )
-
-    if not seller_dir.exists():
-        return None
-
-    return seller_dir
+    bid_dir = tender_dir / "bids" / bid_id
+    return bid_dir if bid_dir.exists() and bid_dir.is_dir() else None
 
 
 def list_bids(tender_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
     bids_dir = tender_dir / "bids"
-
     if not bids_dir.exists():
         return []
 
-    return [
-        folder.name
-        for folder in bids_dir.iterdir()
+    return sorted(
+        folder.name for folder in bids_dir.iterdir()
         if folder.is_dir()
-    ]
-
-
-def add_bid_document(
-    tender_id,
-    seller_id,
-    file_path
-):
-    seller_dir = get_bid(
-        tender_id,
-        seller_id
     )
 
-    if seller_dir is None:
-        raise FileNotFoundError(
-            f"Bid not found: {seller_id}"
-        )
+
+def add_bid_document(tender_id, bid_id, file_path):
+    bid_dir = get_bid(tender_id, bid_id)
+    if bid_dir is None:
+        raise FileNotFoundError(f"Bid not found: {bid_id}")
 
     source = Path(file_path)
-
     if not source.exists():
-        raise FileNotFoundError(
-            f"File not found: {file_path}"
-        )
+        raise FileNotFoundError(f"File not found: {file_path}")
 
-    destination = (
-        seller_dir / source.name
-    )
+    if source.suffix.lower() != ".pdf":
+        raise ValueError("Bid documents must be PDF files.")
 
-    destination.write_bytes(
-        source.read_bytes()
-    )
+    documents_dir = bid_dir / "documents"
+    documents_dir.mkdir(parents=True, exist_ok=True)
 
+    destination = documents_dir / source.name
+    shutil.copy2(source, destination)
     return destination
 
 
-def process_bid_documents(
-    tender_id,
-    seller_id
-):
-    tender_dir = get_tender(tender_id)
+def process_bid_documents(tender_id, bid_id):
+    bid_dir = get_bid(tender_id, bid_id)
+    if bid_dir is None:
+        raise FileNotFoundError(f"Bid not found: {bid_id}")
 
-    if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
-
-    seller_dir = get_bid(
-        tender_id,
-        seller_id
-    )
-
-    if seller_dir is None:
-        raise FileNotFoundError(
-            f"Bid not found: {seller_id}"
-        )
-
-    text_extractor.process_document_folder(
-        seller_dir
-    )
-
+    text_extractor.process_document_folder(bid_dir / "documents")
     return True
 
 
-def check_bid_compliance(
-    tender_id,
-    seller_id
-):
+def check_bid_compliance(tender_id, bid_id):
     tender_dir = get_tender(tender_id)
-
     if tender_dir is None:
-        raise FileNotFoundError(
-            f"Tender not found: {tender_id}"
-        )
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
 
-    result = compliance_checker.process_bid(
-        tender_dir,
-        seller_id
-    )
-
-    return result
+    return compliance_checker.process_bid(tender_dir, bid_id)
 
 
-def process_bid(
-    tender_id,
-    seller_id
-):
-    process_bid_documents(
-        tender_id,
-        seller_id
-    )
-
-    return check_bid_compliance(
-        tender_id,
-        seller_id
-    )
+def process_bid(tender_id, bid_id):
+    process_bid_documents(tender_id, bid_id)
+    return check_bid_compliance(tender_id, bid_id)
 
 
-def get_compliance(
-    tender_id,
-    seller_id
-):
-    seller_dir = get_bid(
-        tender_id,
-        seller_id
-    )
+def get_compliance(tender_id, bid_id):
+    bid_dir = get_bid(tender_id, bid_id)
+    if bid_dir is None:
+        raise FileNotFoundError(f"Bid not found: {bid_id}")
 
-    if seller_dir is None:
-        raise FileNotFoundError(
-            f"Bid not found: {seller_id}"
-        )
-
-    compliance_path = (
-        seller_dir / "compliance.json"
-    )
-
+    compliance_path = bid_dir / "evaluation.json"
     if not compliance_path.exists():
         return None
 
-    with open(
-        compliance_path,
-        "r",
-        encoding="utf-8"
-    ) as file:
-        return json.load(file)
+    return json.loads(compliance_path.read_text(encoding="utf-8"))
 
 
-def get_documents(
-    tender_id,
-    seller_id=None
-):
-    if seller_id is None:
+def get_documents(tender_id, bid_id=None):
+    if bid_id is None:
         tender_dir = get_tender(tender_id)
-
         if tender_dir is None:
-            raise FileNotFoundError(
-                f"Tender not found: {tender_id}"
-            )
-
-        documents_dir = (
-            tender_dir
-            / "tender_documents"
-        )
+            raise FileNotFoundError(f"Tender not found: {tender_id}")
+        documents_dir = tender_dir / "tender_documents"
     else:
-        seller_dir = get_bid(
-            tender_id,
-            seller_id
-        )
-
-        if seller_dir is None:
-            raise FileNotFoundError(
-                f"Bid not found: {seller_id}"
-            )
-
-        documents_dir = seller_dir
+        bid_dir = get_bid(tender_id, bid_id)
+        if bid_dir is None:
+            raise FileNotFoundError(f"Bid not found: {bid_id}")
+        documents_dir = bid_dir / "documents"
 
     if not documents_dir.exists():
         return []
 
-    return [
-        file.name
-        for file in documents_dir.iterdir()
-        if file.is_file()
-        and file.suffix.lower() == ".pdf"
-    ]
+    return sorted(
+        file.name for file in documents_dir.iterdir()
+        if file.is_file() and file.suffix.lower() == ".pdf"
+    )
 
 
 if __name__ == "__main__":

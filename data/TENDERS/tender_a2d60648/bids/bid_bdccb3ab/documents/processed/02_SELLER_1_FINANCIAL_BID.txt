@@ -1,0 +1,35 @@
+HASH: 8dd965f9ef10294def840119129bcdb05f043c73414068d87f152b8e03078c0a
+SOURCE: 02_SELLER_1_FINANCIAL_BID.pdf
+PDF TYPE: DIGITAL
+PROCESSED: 2026-09-09T20:41:20.038168+00:00
+
+<[PAGE 1]>
+SELLER 1 — FINANCIAL BID
+Asterbyte Systems Pvt. Ltd. | Synthetic test bid
+Document Status
+SYNTHETIC TEST DATA — NOT A REAL COMMERCIAL OFFER.
+Financial Offer
+Bidder: Asterbyte Systems Pvt. Ltd.
+Tender Reference: SYN-GEM-TEST-2026-001
+Quantity: 25 laptops
+Quoted unit price: ₹68,500
+Quoted total for 25 units: ₹17,12,500
+Price Inclusions
+• Applicable taxes assumed included in the quoted total for this test scenario.
+• Standard freight and delivery included.
+• Standard charger and operating system licence included.
+• No separate installation charge.
+Commercial Commitments
+Delivery: 28 days
+Warranty: 3 years onsite
+Bid validity: 90 days
+Payment: As per buyer tender terms.
+Price Schedule
+Unit price × quantity = ₹68,500 × 25 = ₹17,12,500
+Evaluated synthetic total: ₹17,12,500
+Authorised Signatory
+Name: Synthetic Signatory 1
+Designation: Commercial Manager
+Company: Asterbyte Systems Pvt. Ltd.
+Signature: ____________________
+Date: 10 September 2026

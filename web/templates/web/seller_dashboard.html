@@ -1,0 +1,35 @@
+{% extends "web/app_base.html" %}
+{% block title %}Seller Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Open Tenders</h1>
+        <p class="lead">Tenders with published requirements are ready to accept bids.</p>
+    </div>
+</div>
+
+<div class="card">
+    {% if tenders %}
+    <div class="data-table-wrap">
+    <table class="data-table">
+        <thead><tr><th>Tender ID</th><th>Requirements</th><th>Bids Submitted</th><th></th></tr></thead>
+        <tbody>
+        {% for tender in tenders %}
+            <tr>
+                <td class="id-cell">{{ tender.tender_id }}</td>
+                <td>{{ tender.requirement_count }}</td>
+                <td>{{ tender.bid_count }}</td>
+                <td><a class="button small" href="{% url 'seller_tender_detail' tender.tender_id %}">View Tender</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">&#128269;</div>
+        <p>No tenders are open for bidding yet.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

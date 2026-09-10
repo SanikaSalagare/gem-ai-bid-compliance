@@ -19,6 +19,7 @@ _ocr_engine = None
 
 def get_ocr_engine():
     global _ocr_engine
+
     if _ocr_engine is None:
         _ocr_engine = PaddleOCR(
             use_doc_orientation_classify=False,
@@ -26,6 +27,7 @@ def get_ocr_engine():
             use_textline_orientation=False,
             lang="en",
         )
+
     return _ocr_engine
 
 
@@ -38,9 +40,11 @@ def clean_text(text: str) -> str:
 
 def get_pdf_hash(pdf_path: Path) -> str:
     sha256 = hashlib.sha256()
+
     with pdf_path.open("rb") as file:
         for chunk in iter(lambda: file.read(1024 * 1024), b""):
             sha256.update(chunk)
+
     return sha256.hexdigest()
 
 
@@ -49,7 +53,9 @@ def read_existing_hash(txt_path: Path):
         return None
 
     try:
-        first_line = txt_path.read_text(encoding="utf-8").splitlines()[0]
+        first_line = txt_path.read_text(
+            encoding="utf-8"
+        ).splitlines()[0]
     except (OSError, IndexError):
         return None
 
@@ -82,7 +88,8 @@ def is_scanned(pdf_path: Path) -> bool:
     pages_with_text = sum(
         1
         for page in reader.pages
-        if len((page.extract_text() or "").strip()) > SCANNED_TEXT_THRESHOLD_CHARS
+        if len((page.extract_text() or "").strip())
+        > SCANNED_TEXT_THRESHOLD_CHARS
     )
 
     return pages_with_text < len(reader.pages) * SCANNED_PAGE_FRACTION
@@ -107,6 +114,7 @@ def extract_scanned_pages(pdf_path: Path) -> list[str]:
     for result in results:
         rec_texts = result["rec_texts"]
         page_text = "\n".join(rec_texts)
+
         pages.append(
             clean_text(page_text)
             if page_text.strip()
@@ -126,10 +134,10 @@ def build_text_content(
         f"HASH: {pdf_hash}\n"
         f"SOURCE: {pdf_name}\n"
         f"PDF TYPE: {pdf_type}\n"
-        f"PROCESSED: {datetime.now(timezone.utc).isoformat()}\n"
+        f"PROCESSED: {datetime.now(timezone.utc).isoformat()}\n\n"
     )
 
-    body = "\n".join(
+    body = "\n\n".join(
         f"<[PAGE {index}]>\n{page_text}"
         for index, page_text in enumerate(pages, start=1)
     )
@@ -147,7 +155,11 @@ def process_pdf(pdf_path: Path, processed_dir: Path) -> bool:
     if existing_hash == current_hash:
         return False
 
-    pdf_type = PDF_TYPE_SCANNED if is_scanned(pdf_path) else PDF_TYPE_DIGITAL
+    pdf_type = (
+        PDF_TYPE_SCANNED
+        if is_scanned(pdf_path)
+        else PDF_TYPE_DIGITAL
+    )
 
     try:
         pages = (
@@ -163,7 +175,12 @@ def process_pdf(pdf_path: Path, processed_dir: Path) -> bool:
         rotate_backups(txt_path)
 
     txt_path.write_text(
-        build_text_content(current_hash, pdf_path.name, pdf_type, pages),
+        build_text_content(
+            current_hash,
+            pdf_path.name,
+            pdf_type,
+            pages,
+        ),
         encoding="utf-8",
     )
 
@@ -172,35 +189,55 @@ def process_pdf(pdf_path: Path, processed_dir: Path) -> bool:
 
 def process_document_folder(document_folder: Path) -> None:
     document_folder = Path(document_folder)
-    processed_dir = document_folder / "processed_documents"
+    processed_dir = document_folder / "processed"
 
     for pdf_path in sorted(document_folder.glob("*.pdf")):
-        action = "PROCESSED" if process_pdf(pdf_path, processed_dir) else "SKIPPED"
+        action = (
+            "PROCESSED"
+            if process_pdf(pdf_path, processed_dir)
+            else "SKIPPED"
+        )
         print(f"{action}: {pdf_path}")
 
 
 def process_tender(tender_dir: Path) -> None:
     tender_dir = Path(tender_dir)
-    if not tender_dir.exists():
-        raise FileNotFoundError(f"Tender directory not found: {tender_dir}")
 
-    document_folder = tender_dir / "tender_documents"
-    if document_folder.exists():
-        process_document_folder(document_folder)
+    if not tender_dir.exists():
+        raise FileNotFoundError(
+            f"Tender directory not found: {tender_dir}"
+        )
+
+    tender_documents = tender_dir / "tender_documents"
+
+    if tender_documents.exists():
+        process_document_folder(tender_documents)
 
     bids_dir = tender_dir / "bids"
+
     if bids_dir.exists():
-        for seller_dir in sorted(p for p in bids_dir.iterdir() if p.is_dir()):
-            process_document_folder(seller_dir)
+        for bid_dir in sorted(
+            p for p in bids_dir.iterdir() if p.is_dir()
+        ):
+            documents_dir = bid_dir / "documents"
+
+            if documents_dir.exists():
+                process_document_folder(documents_dir)
 
 
 def process_all_tenders(tenders_dir: Path | None = None) -> None:
-    tenders_dir = Path(tenders_dir or ROOT_DIR / "data" / "TENDERS")
+    tenders_dir = Path(
+        tenders_dir or ROOT_DIR / "data" / "TENDERS"
+    )
 
     if not tenders_dir.exists():
-        raise FileNotFoundError(f"Tenders directory not found: {tenders_dir}")
+        raise FileNotFoundError(
+            f"Tenders directory not found: {tenders_dir}"
+        )
 
-    for tender_dir in sorted(p for p in tenders_dir.iterdir() if p.is_dir()):
+    for tender_dir in sorted(
+        p for p in tenders_dir.iterdir() if p.is_dir()
+    ):
         process_tender(tender_dir)
 
 

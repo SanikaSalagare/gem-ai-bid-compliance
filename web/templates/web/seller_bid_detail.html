@@ -1,0 +1,100 @@
+{% extends "web/app_base.html" %}
+{% block title %}Bid {{ bid.bid_id }}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'seller_dashboard' %}">Open Tenders</a><span class="sep">/</span>
+    <a href="{% url 'seller_tender_detail' tender_id %}">{{ tender_id }}</a><span class="sep">/</span>
+    <span class="current">{{ bid.bid_id }}</span>
+</div>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Bid {{ bid.bid_id }}</h1>
+        <p class="lead">{{ bid.documents|length }} document{{ bid.documents|length|pluralize }} submitted</p>
+    </div>
+    <div class="header-actions">
+        <form method="post" action="{% url 'seller_process_bid' tender_id bid.bid_id %}" onsubmit="return confirm('Submit your documents for compliance evaluation? This can take a while.');">
+            {% csrf_token %}
+            <button type="submit" class="button primary">Submit for Compliance Check</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Overall Compliance</h2></div>
+    {% if bid.evaluation_ready %}
+    <div class="compliance-summary">
+        <div class="compliance-score-ring" style="--pct: {{ bid.overall_score }};">
+            <div class="inner">
+                <strong>{{ bid.overall_score }}%</strong>
+                <span>Overall</span>
+            </div>
+        </div>
+        <div class="compliance-breakdown">
+            <div class="breakdown-item"><span class="status-badge compliant"><span class="icon">&#10003;</span></span><span class="count">{{ bid.counts.COMPLIANT }}</span> Compliant</div>
+            <div class="breakdown-item"><span class="status-badge partial"><span class="icon">&#9888;</span></span><span class="count">{{ bid.counts.PARTIALLY_COMPLIANT }}</span> Partial</div>
+            <div class="breakdown-item"><span class="status-badge non-compliant"><span class="icon">&#10007;</span></span><span class="count">{{ bid.counts.NON_COMPLIANT }}</span> Non-Compliant</div>
+            <div class="breakdown-item"><span class="status-badge missing"><span class="icon">!</span></span><span class="count">{{ bid.counts.MISSING }}</span> Missing</div>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">&#9203;</div>
+        <p>Your bid hasn't been evaluated yet. Upload your documents below and submit for a compliance check.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Your Documents</h2></div>
+    <form method="post" action="{% url 'seller_upload_bid_document' tender_id bid.bid_id %}" enctype="multipart/form-data" class="inline-form" style="margin-bottom:18px;">
+        {% csrf_token %}
+        <div class="file-input-wrap">
+            <input type="file" name="document" accept="application/pdf" required>
+        </div>
+        <button type="submit" class="button primary">Upload PDF</button>
+    </form>
+
+    {% if bid.documents %}
+    <div class="data-table-wrap">
+    <table class="data-table">
+        <thead><tr><th>File</th><th></th></tr></thead>
+        <tbody>
+        {% for doc in bid.documents %}
+            <tr>
+                <td>{{ doc }}</td>
+                <td><a class="button small" href="{% url 'bid_document_viewer' tender_id bid.bid_id doc %}">Inspect</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">&#128196;</div>
+        <p>You haven't uploaded any documents yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% if bid.evaluation_ready %}
+<div class="card">
+    <div class="card-header"><h2>Requirement-by-Requirement Results</h2></div>
+    <div class="data-table-wrap">
+    <table class="data-table">
+        <thead><tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr></thead>
+        <tbody>
+        {% for row in bid.rows %}
+            <tr>
+                <td class="id-cell">REQ-{{ row.requirement.id|stringformat:"03d" }}<br><span class="muted-cell" style="font-weight:400;">{{ row.requirement.requirement|truncatechars:80 }}</span></td>
+                <td>{% include "web/partials/status_badge.html" with meta=row.status_meta %}</td>
+                <td>{% if row.evaluation and row.evaluation.evidence %}{{ row.evaluation.evidence|truncatechars:60 }}{% else %}<span class="muted-cell">No evidence found</span>{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

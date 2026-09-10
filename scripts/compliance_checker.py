@@ -1,12 +1,14 @@
 from pathlib import Path
 import json
 import re
+
 from llama_cpp import Llama
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT_DIR / "AI" / "models" / "Qwen3-8B-Q4_K_M.gguf"
 
-OUTPUT_FILENAME = "compliance.json"
+OUTPUT_FILENAME = "evaluation.json"
+MAX_CHUNK_CHARS = 12000
 
 _llm = None
 
@@ -25,226 +27,252 @@ def get_llm():
     return _llm
 
 
-def load_processed_text(folder):
-    documents_dir = folder / "processed_documents"
+def load_requirements(tender_dir):
+    path = tender_dir / "requirement.json"
 
-    if not documents_dir.exists():
-        return ""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Requirement file not found: {path}"
+        )
 
-    texts = []
+    return json.loads(
+        path.read_text(encoding="utf-8")
+    )
 
-    for text_file in sorted(documents_dir.glob("*.txt")):
+
+def load_pages(bid_dir):
+    processed_dir = bid_dir / "documents" / "processed"
+
+    if not processed_dir.exists():
+        return []
+
+    pages = []
+
+    for text_file in sorted(processed_dir.glob("*.txt")):
         content = text_file.read_text(
             encoding="utf-8",
             errors="ignore",
         )
 
-        match = re.search(
-            r"^PROCESSED:.*?$",
-            content,
-            re.MULTILINE,
+        matches = list(
+            re.finditer(
+                r"<\[PAGE\s+(\d+)\]>",
+                content,
+            )
         )
 
-        if match:
-            content = content[match.end():]
+        for index, match in enumerate(matches):
+            start = match.end()
+            end = (
+                matches[index + 1].start()
+                if index + 1 < len(matches)
+                else len(content)
+            )
 
-        texts.append(content.strip())
+            text = content[start:end].strip()
 
-    return "\n\n".join(texts)
+            if text:
+                pages.append(
+                    {
+                        "file": text_file.stem + ".pdf",
+                        "page": int(match.group(1)),
+                        "text": text,
+                    }
+                )
+
+    return pages
 
 
-def load_requirements(tender_dir):
-    requirements_path = tender_dir / "req.json"
+def find_relevant_pages(requirement, pages, limit=4):
+    words = {
+        word.lower()
+        for word in re.findall(
+            r"[A-Za-z0-9]{4,}",
+            requirement,
+        )
+    }
 
-    if not requirements_path.exists():
-        raise FileNotFoundError(
-            f"Requirement file not found: {requirements_path}"
+    scored = []
+
+    for page in pages:
+        page_words = set(
+            re.findall(
+                r"[A-Za-z0-9]{4,}",
+                page["text"].lower(),
+            )
         )
 
-    return json.loads(
-        requirements_path.read_text(
-            encoding="utf-8"
-        )
+        score = len(words & page_words)
+
+        if score:
+            scored.append((score, page))
+
+    scored.sort(
+        key=lambda item: item[0],
+        reverse=True,
     )
 
-
-def extract_seller_information(seller_text):
-    llm = get_llm()
-
-    prompt = f"""
-You are analyzing a seller's bid documents for a government procurement tender.
-
-Extract only information explicitly present in the seller documents.
-
-Return ONLY valid JSON using this structure:
-
-{{
-    "company_name": "",
-    "contact": "",
-    "certifications_held": [],
-    "financial_details": [],
-    "technical_capabilities": [],
-    "eligibility_claims": [],
-    "other_information": []
-}}
-
-Do not invent information.
-
-SELLER DOCUMENTS:
-
-{seller_text}
-"""
-
-    response = llm.create_chat_completion(
-        messages=[
-            {
-                "role": "system",
-                "content": "You extract structured information from seller bid documents.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.1,
-        response_format={"type": "json_object"},
-    )
-
-    return json.loads(
-        response["choices"][0]["message"]["content"]
-    )
-
-
-def check_compliance(requirements, seller_information):
-    llm = get_llm()
-
-    prompt = f"""
-You are a procurement bid compliance verification system.
-
-Compare the tender requirements against the seller information.
-
-Determine whether each requirement is:
-
-COMPLIANT
-- The seller provides sufficient evidence that the requirement is satisfied.
-
-NON_COMPLIANT
-- The seller provides evidence that the requirement is not satisfied.
-
-INSUFFICIENT_EVIDENCE
-- The available seller documents do not provide enough evidence to determine compliance.
-
-Do not assume missing information is compliant.
-
-Return ONLY valid JSON.
-
-Required structure:
-
-{{
-    "overall_status": "",
-    "summary": {{
-        "total_requirements": 0,
-        "compliant": 0,
-        "non_compliant": 0,
-        "insufficient_evidence": 0
-    }},
-    "requirements": [
-        {{
-            "requirement_id": "",
-            "category": "",
-            "description": "",
-            "mandatory": true,
-            "status": "",
-            "evidence": "",
-            "reason": ""
-        }}
+    return [
+        page
+        for _, page in scored[:limit]
     ]
+
+
+def build_prompt(requirement, pages):
+    evidence_text = "\n\n".join(
+        f'FILE: {page["file"]}\n'
+        f'PAGE: {page["page"]}\n'
+        f'{page["text"]}'
+        for page in pages
+    )
+
+    return f"""
+You are verifying one procurement requirement against seller documents.
+
+Requirement:
+{json.dumps(requirement, ensure_ascii=False)}
+
+Seller document evidence:
+{evidence_text}
+
+Return ONLY valid JSON with exactly:
+{{
+    "score": 0,
+    "file": null,
+    "page": null,
+    "evidence": null
 }}
-
-Tender requirements:
-
-{json.dumps(requirements, indent=2, ensure_ascii=False)}
-
-Seller information:
-
-{json.dumps(seller_information, indent=2, ensure_ascii=False)}
 
 Rules:
-- Evaluate every requirement.
-- Preserve the original requirement ID.
-- Do not invent seller evidence.
-- Missing evidence must normally be marked INSUFFICIENT_EVIDENCE.
-- If a mandatory requirement is NON_COMPLIANT, overall_status should be NON_COMPLIANT.
-- If no mandatory requirement is violated but some requirements lack evidence, overall_status should be INSUFFICIENT_EVIDENCE.
-- Use COMPLIANT only when the seller evidence clearly supports the requirement.
+- Score from 0 to 100.
+- 100 means the evidence clearly satisfies the requirement.
+- 0 means there is no supporting evidence or the evidence clearly fails.
+- Use intermediate scores for partial compliance or uncertainty.
+- Never invent evidence.
+- If evidence supports the requirement, return the exact source file and page.
+- If no useful evidence exists, use null for file, page and evidence.
+- Keep evidence short and quote/paraphrase only what is present.
 """
+
+
+def evaluate_requirement(llm, requirement, pages):
+    relevant = find_relevant_pages(
+        requirement["requirement"],
+        pages,
+    )
+
+    if not relevant:
+        return {
+            "id": requirement["id"],
+            "score": 0,
+            "file": None,
+            "page": None,
+            "evidence": None,
+        }
 
     response = llm.create_chat_completion(
         messages=[
             {
                 "role": "system",
-                "content": "You verify seller compliance against procurement requirements.",
+                "content": (
+                    "You evaluate procurement requirements "
+                    "using only supplied seller evidence."
+                ),
             },
             {
                 "role": "user",
-                "content": prompt,
+                "content": build_prompt(
+                    requirement,
+                    relevant,
+                ),
             },
         ],
         temperature=0.1,
         response_format={"type": "json_object"},
     )
 
-    return json.loads(
+    result = json.loads(
         response["choices"][0]["message"]["content"]
     )
 
+    try:
+        score = max(
+            0,
+            min(100, int(result.get("score", 0))),
+        )
+    except (TypeError, ValueError):
+        score = 0
 
-def process_bid(tender_dir, seller_id):
+    file_name = result.get("file")
+    page = result.get("page")
+    evidence = result.get("evidence")
+
+    if file_name is not None:
+        file_name = str(file_name)
+
+    if page is not None:
+        try:
+            page = int(page)
+        except (TypeError, ValueError):
+            page = None
+
+    return {
+        "id": requirement["id"],
+        "score": score,
+        "file": file_name,
+        "page": page,
+        "evidence": evidence,
+    }
+
+
+def process_bid(tender_dir, bid_id):
     tender_dir = Path(tender_dir)
+    bid_dir = tender_dir / "bids" / bid_id
 
-    seller_dir = tender_dir / "bids" / seller_id
-
-    if not seller_dir.exists():
+    if not bid_dir.exists():
         raise FileNotFoundError(
-            f"Seller directory does not exist: {seller_dir}"
+            f"Bid directory does not exist: {bid_dir}"
         )
 
     requirements = load_requirements(tender_dir)
+    pages = load_pages(bid_dir)
 
-    seller_text = load_processed_text(seller_dir)
-
-    if not seller_text.strip():
+    if not pages:
         raise ValueError(
-            f"No processed seller documents found in: {seller_dir}"
+            f"No processed bid documents found in: {bid_dir}"
         )
 
-    seller_information = extract_seller_information(
-        seller_text
-    )
+    llm = get_llm()
+    evaluation = []
 
-    compliance = check_compliance(
+    for index, requirement in enumerate(
         requirements,
-        seller_information,
-    )
+        start=1,
+    ):
+        print(
+            f"Compliance requirement "
+            f"{index}/{len(requirements)}"
+        )
 
-    output = {
-        "seller_id": seller_id,
-        "seller_information": seller_information,
-        "compliance": compliance,
-    }
+        evaluation.append(
+            evaluate_requirement(
+                llm,
+                requirement,
+                pages,
+            )
+        )
 
-    output_path = seller_dir / OUTPUT_FILENAME
-
+    output_path = bid_dir / OUTPUT_FILENAME
     output_path.write_text(
         json.dumps(
-            output,
+            evaluation,
             indent=4,
             ensure_ascii=False,
         ),
         encoding="utf-8",
     )
 
-    return output
+    return evaluation
 
 
 if __name__ == "__main__":
@@ -253,18 +281,23 @@ if __name__ == "__main__":
     if len(sys.argv) != 3:
         print(
             "Usage: python compliance_checker.py "
-            "<tender_id> <seller_id>"
+            "<tender_id> <bid_id>"
         )
         raise SystemExit(1)
 
     tender_id = sys.argv[1]
-    seller_id = sys.argv[2]
+    bid_id = sys.argv[2]
 
-    tender_dir = ROOT_DIR / "data" / "TENDERS" / tender_id
+    tender_dir = (
+        ROOT_DIR
+        / "data"
+        / "TENDERS"
+        / tender_id
+    )
 
     result = process_bid(
         tender_dir,
-        seller_id,
+        bid_id,
     )
 
     print(

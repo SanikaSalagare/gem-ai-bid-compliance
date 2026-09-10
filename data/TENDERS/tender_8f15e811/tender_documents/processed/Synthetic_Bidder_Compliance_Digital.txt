@@ -1,0 +1,163 @@
+HASH: 7672de48e66bc5bac8f607c246dca0aac099203bcbc92bb9fbb3c143f3b06867
+SOURCE: Synthetic_Bidder_Compliance_Digital.pdf
+PDF TYPE: DIGITAL
+PROCESSED: 2026-09-09T20:27:46.853365+00:00
+
+<[PAGE 1]>
+SYNTHETIC BIDDER COMPLIANCE DOCUMENT PACK
+For OCR and AI/NLP testing only
+This is a fictional test document created for a procurement compliance verification system. It is NOT a government-issued certificate and must
+not be used as proof of actual compliance.
+Bidder / Supplier Profile
+Field
+Test Value
+Legal / Trade Name
+ABC Office Systems Private Limited
+PAN
+AABCA1234K
+GSTIN
+27AABCA1234K1Z5
+Udyam Registration No.
+UDYAM-MH-12-0012345
+CIN
+U12345MH2020PTC123456
+Registered State
+Maharashtra
+Business Type
+Private Limited Company
+Compliance Period
+April 2025 - March 2026
+Document Index
+1. GST Registration and Return Filing Status
+2. Income Tax Compliance Summary
+3. EPFO and ESIC Compliance
+4. Udyam/MSME, PAN and MCA21 Corporate Filing Summary
+
+<[PAGE 2]>
+1. Taxation & Financial Compliance
+GST Registration
+GSTIN: 27AABCA1234K1Z5
+Registration status: Active
+Registration type: Regular
+State: Maharashtra
+Effective registration date: 15-06-2020
+GST Return Filing Status
+Tax Period
+GSTR-3B Status
+GSTR-1 Status
+Apr-2025
+Filed
+Filed
+May-2025
+Filed
+Filed
+Jun-2025
+Filed
+Filed
+Jul-2025
+Filed
+Filed
+Aug-2025
+Filed
+Filed
+Sep-2025
+Filed
+Filed
+Oct-2025
+Filed
+Filed
+Nov-2025
+Filed
+Filed
+Dec-2025
+Filed
+Filed
+Jan-2026
+Filed
+Filed
+Feb-2026
+Filed
+Filed
+Mar-2026
+Filed
+Filed
+Income Tax Compliance
+Assessment Year: 2026-27
+Return type: ITR-6
+Filing status: Filed
+Filing date: 30-09-2026
+Tax audit report: Available in records
+Outstanding demand: Nil as per this synthetic record
+Financial Verification Note: The values are fictional and intentionally structured for extraction and compliance-rule testing.
+
+<[PAGE 3]>
+2. Labor & Social Security Compliance
+EPFO Compliance
+EPFO Establishment ID: MH/MUM/1234567
+Registration status: Active
+Employee count reported: 48
+Contribution status: Deposits recorded for Apr-2025 through Mar-2026
+Compliance certificate reference: EPFO-SYN-2026-0048
+ESIC Compliance
+ESIC Employer Code: 51001234560001001
+Registration status: Active
+Insured employee count: 41
+Contribution status: Deposits recorded for Apr-2025 through Mar-2026
+Compliance certificate reference: ESIC-SYN-2026-0041
+3. Udyam / MSME Registration
+Udyam Registration Number: UDYAM-MH-12-0012345
+Enterprise type: Small Enterprise
+Registration status: Active
+Date of registration: 18-08-2021
+Major activity: Manufacturing and supply of office computing equipment
+Evidence Mapping Hints for AI Testing
+Compliance Item
+Evidence / Fields to Extract
+EPFO
+Establishment ID, registration status, employee count, contribution status
+ESIC
+Employer code, registration status, insured employees, contribution status
+Udyam / MSME
+Registration number, enterprise type, status, registration date
+
+<[PAGE 4]>
+4. Identity & Corporate Filing Compliance
+PAN (Permanent Account Number)
+PAN: AABCA1234K
+Name on PAN record: ABC Office Systems Private Limited
+Status: Active (synthetic test value)
+MCA21 / Corporate Filings
+Corporate Identification Number (CIN): U12345MH2020PTC123456
+Company status: Active
+Date of incorporation: 22-07-2020
+Registered office state: Maharashtra
+Filing
+Financial Year
+Status
+Reference
+AOC-4
+2024-25
+Filed
+MCA-SYN-AOC4-2501
+MGT-7
+2024-25
+Filed
+MCA-SYN-MGT7-2501
+AOC-4
+2025-26
+Filed
+MCA-SYN-AOC4-2601
+MGT-7
+2025-26
+Filed
+MCA-SYN-MGT7-2601
+Compliance Summary
+GST Registration: Active
+GST Return Filing: Filed for listed periods
+Income Tax Filing: Filed
+EPFO: Active / deposits recorded
+ESIC: Active / deposits recorded
+Udyam / MSME: Active
+PAN: Active
+MCA21 Corporate Filings: Filed for listed financial years
+Important: All names, identifiers, dates, filing references and compliance results in this document are synthetic.
