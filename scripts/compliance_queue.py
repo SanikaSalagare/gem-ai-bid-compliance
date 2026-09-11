@@ -1,24 +1,32 @@
 from __future__ import annotations
 
 import json
-import queue
 import threading
 import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts import compliance_checker, text_extractor
-from scripts.model_manager import reset_context
+from scripts import compliance_checker, job_queue, text_extractor
 from scripts.atomic_io import merge_write_json
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TENDERS_DIR = ROOT_DIR / "data" / "TENDERS"
 STATUS_FILENAME = "analysis_status.json"
 
-_jobs: queue.Queue[dict] = queue.Queue()
+# Every job actually executes on the single shared worker in
+# scripts/job_queue.py (see that module for why: a bid-compliance job
+# and a tender-processing job must never run at the same time). This
+# lock only protects the bookkeeping below - _active_bids and the status
+# file - from being read/written by two requests at once.
 _jobs_lock = threading.RLock()
-_worker_started = False
+
+# (tender_id, bid_id) -> True while an analysis job for that bid is
+# queued or running. Lets enqueue() recognise "this bid already has a
+# job in flight" and hand back that job instead of piling on a
+# duplicate - e.g. if a seller double-clicks "Submit for Compliance
+# Check", or reloads the page and it re-submits the form.
+_active_bids: set[tuple[str, str]] = set()
 
 
 def _now():
@@ -38,62 +46,75 @@ def _persist(job):
     merge_write_json(path, job)
 
 
-def _worker():
-    while True:
-        job = _jobs.get()
-        try:
-            with _jobs_lock:
-                job["status"] = "processing"
-                job["started_at"] = _now()
-                _persist(job)
+def _run_job(job):
+    """The actual work for one job, run on job_queue's shared worker.
+    Guaranteed never to overlap with any other bid-compliance job OR any
+    tender-processing job (see scripts/job_queue.py) - so a bid can never
+    be evaluated against a requirement set that's mid-(re)extraction."""
+    tender_id = job["tender_id"]
+    bid_id = job["bid_id"]
+    key = (tender_id, bid_id)
 
-            tender_dir = TENDERS_DIR / job["tender_id"]
-            bid_id = job["bid_id"]
-            text_extractor.process_document_folder(tender_dir / "bids" / bid_id / "documents")
-            reset_context()
-            compliance_checker.process_bid(tender_dir, bid_id)
+    try:
+        with _jobs_lock:
+            job["status"] = "processing"
+            job["started_at"] = _now()
+            _persist(job)
 
-            with _jobs_lock:
-                job["status"] = "completed"
-                job["finished_at"] = _now()
-                _persist(job)
-        except Exception as exc:
-            traceback.print_exc()
-            with _jobs_lock:
-                job["status"] = "failed"
-                job["error"] = str(exc)
-                job["finished_at"] = _now()
-                _persist(job)
-        finally:
-            reset_context()
-            _jobs.task_done()
+        tender_dir = TENDERS_DIR / tender_id
+        text_extractor.process_document_folder(tender_dir / "bids" / bid_id / "documents")
+        compliance_checker.process_bid(tender_dir, bid_id)
 
-
-def _ensure_worker():
-    global _worker_started
-    with _jobs_lock:
-        if not _worker_started:
-            thread = threading.Thread(target=_worker, name="gem-compliance-worker", daemon=True)
-            thread.start()
-            _worker_started = True
+        with _jobs_lock:
+            job["status"] = "completed"
+            job["finished_at"] = _now()
+            _persist(job)
+    except Exception as exc:
+        traceback.print_exc()
+        with _jobs_lock:
+            job["status"] = "failed"
+            job["error"] = str(exc)
+            job["finished_at"] = _now()
+            _persist(job)
+    finally:
+        with _jobs_lock:
+            _active_bids.discard(key)
 
 
 def enqueue(tender_id, bid_id):
-    _ensure_worker()
-    job_id = f"analysis_{uuid.uuid4().hex[:10]}"
-    job = {
-        "job_id": job_id,
-        "tender_id": tender_id,
-        "bid_id": bid_id,
-        "status": "queued",
-        "queued_at": _now(),
-        "started_at": None,
-        "finished_at": None,
-        "error": None,
-    }
+    """Queue compliance analysis for a bid.
+
+    If a job for this bid is already queued or running, that existing
+    job is returned instead of enqueuing a duplicate - so a repeated
+    "Submit for Compliance Check" click can't stack up redundant runs
+    against the same bid. The job itself only starts once it reaches the
+    front of the single shared queue (scripts/job_queue.py), so it will
+    naturally wait out any tender-processing job that's already running -
+    including one for this bid's own tender - rather than racing it.
+    """
+    key = (tender_id, bid_id)
+
     with _jobs_lock:
+        if key in _active_bids:
+            existing = get_status(tender_id, bid_id)
+            if existing is not None and existing.get("status") in ("queued", "processing"):
+                return existing
+
+        job_id = f"analysis_{uuid.uuid4().hex[:10]}"
+        job = {
+            "job_id": job_id,
+            "tender_id": tender_id,
+            "bid_id": bid_id,
+            "status": "queued",
+            "queued_at": _now(),
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+        }
+        _active_bids.add(key)
         _persist(job)
-        _jobs.put(job)
+
+    job_queue.submit(lambda: _run_job(job))
     return job
 
 

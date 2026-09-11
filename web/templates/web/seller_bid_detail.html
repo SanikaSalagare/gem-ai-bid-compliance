@@ -86,13 +86,15 @@
     <div class="card-header"><h2>Requirement-by-Requirement Results</h2></div>
     <div class="data-table-wrap">
     <table class="data-table">
-        <thead><tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr></thead>
+        <thead><tr><th>Requirement</th><th>Score</th><th>Status</th><th>Evidence</th><th>Source</th></tr></thead>
         <tbody>
         {% for row in bid.rows %}
             <tr>
                 <td class="id-cell">REQ-{{ row.requirement.id|stringformat:"03d" }}<br><span class="muted-cell">{{ row.requirement.requirement|truncatechars:80 }}</span></td>
+                <td><strong>{% if row.evaluation %}{{ row.evaluation.score }}{% else %}—{% endif %}</strong>{% if row.evaluation %}/100{% endif %}</td>
                 <td>{% include "web/partials/status_badge.html" with meta=row.status_meta %}</td>
-                <td>{% if row.evaluation and row.evaluation.evidence %}{{ row.evaluation.evidence|truncatechars:60 }}{% else %}<span class="muted-cell">No evidence found</span>{% endif %}</td>
+                <td>{% if row.evaluation and row.evaluation.evidence %}{{ row.evaluation.evidence|truncatechars:60 }}{% if row.evaluation.file %}<br><a class="text-link" href="{% url 'bid_document_viewer' tender_id bid.bid_id row.evaluation.file %}?view=pdf&page={{ row.evaluation.page }}">Open page {{ row.evaluation.page }}</a>{% endif %}{% else %}<span class="muted-cell">No evidence found</span>{% endif %}</td>
+                <td class="muted-cell">{% if row.evaluation and row.evaluation.file %}{{ row.evaluation.file }}{% if row.evaluation.page %}, p.{{ row.evaluation.page }}{% endif %}{% else %}—{% endif %}</td>
             </tr>
         {% endfor %}
         </tbody>

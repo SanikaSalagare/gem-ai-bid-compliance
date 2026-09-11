@@ -17,10 +17,35 @@ MAX_CHUNK_CHARS = 12000
 REQUIREMENT_FIELDS = {"id", "requirement", "file", "page"}
 
 
+ELIGIBILITY_SOURCE_LABEL = "Eligibility (tender form)"
+
+
 def load_pages(tender_dir):
     return text_extractor.read_processed_pages(
         tender_dir / "tender_documents" / "processed"
     )
+
+
+def load_eligibility_page(tender_dir):
+    """Turn the buyer's free-text "Eligibility information" tender-form
+    field into a page-shaped dict so it flows through the same
+    chunking/prompt/extraction pipeline as PDF pages, letting the AI
+    pull eligibility requirements out of it just like any other page.
+    """
+    metadata_path = tender_dir / "tender.json"
+    if not metadata_path.exists():
+        return None
+
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    eligibility = str(metadata.get("eligibility", "")).strip()
+    if not eligibility:
+        return None
+
+    return {"file": ELIGIBILITY_SOURCE_LABEL, "page": 1, "text": eligibility}
 
 
 def build_chunks(pages, max_chars=MAX_CHUNK_CHARS):
@@ -62,48 +87,61 @@ def build_prompt(chunk):
     )
 
     return f"""
-You are a procurement analyst extracting buyer requirements from a
-government tender (GeM) document, so that each requirement can later
-be checked one-by-one against a seller's bid.
+You are a procurement analyst extracting buyer requirements from an
+Indian Government e-Marketplace (GeM) tender document, so each
+requirement can later be checked one-by-one against a seller's bid.
 
-A "requirement" is a condition the tender imposes on the seller that
-their bid must satisfy - a technical specification, an eligibility
-criterion, a certification/standard, a commercial/delivery term, or a
-quantity/turnaround limit. It is NOT a section heading, a page
-number, a table of contents entry, boilerplate ("terms and
-conditions apply"), or narrative text that imposes no condition on
-the seller. If a sentence only describes the buyer's context (e.g.
-background of the department) and asks nothing of the seller, leave
-it out.
+WHAT COUNTS AS A REQUIREMENT
+A condition the tender imposes on the seller that their bid must
+satisfy: a technical specification, an eligibility criterion, a
+certification/standard, a commercial/delivery term, or a
+quantity/turnaround limit.
 
-Read ONLY the supplied tender pages below. Do not use outside
-knowledge of typical GeM tenders to fill gaps.
+WHAT DOES NOT COUNT
+Section headings, page numbers, table-of-contents entries, generic
+boilerplate ("terms and conditions apply"), or narrative text that
+only describes the buyer's context (e.g. department background) and
+asks nothing of the seller. Leave these out entirely.
 
-Return ONLY a valid JSON object (no markdown fences, no commentary)
-with exactly one key, "requirements", whose value is a JSON array.
+SOURCE DISCIPLINE
+Read ONLY the tender pages supplied below. Do not use outside
+knowledge of typical GeM tenders, this product category, or common
+industry standards to fill gaps or add requirements the text doesn't
+state.
 
-Each item in the array must have exactly:
+SPLITTING RULE
+Each "requirement" string must state exactly ONE atomic condition -
+never a paragraph, a whole bullet block, or several conditions joined
+by semicolons/commas/"and". Test: if a sentence contains two things a
+seller could separately pass or fail, split it into two items. If the
+tender presents a labeled specification table or list (e.g.
+"Processor: ...; Memory: ...; Storage: ...; Warranty: ..."), emit one
+item per label/line - never merge them - and keep each label with its
+own value so the item reads standalone. Drop a trailing separator
+(";", ",") when it isn't part of the value itself.
+
+FIDELITY RULE
+Preserve numbers, units, standards, and wording exactly as written for
+each item - no rounding, unit conversion, or paraphrasing of specifics.
+
+CITATION RULE
+Every item must carry the exact source PDF filename and page number,
+copied verbatim from that page's FILE/PAGE marker - never guessed or
+borrowed from a neighboring page.
+
+OUTPUT FORMAT
+Return ONLY a valid JSON object - no markdown fences, no commentary -
+with exactly one key, "requirements", holding a JSON array. Each array
+item has exactly these three keys and no others:
 {{
     "requirement": "",
     "page": 0,
     "file": ""
 }}
+Do not assign an "id" - IDs are assigned later, after all chunks are
+consolidated and deduplicated.
 
-Each "requirement" string must state ONE atomic, single-condition
-requirement - not a paragraph, not a bullet block, and not several
-conditions joined together with semicolons/commas/newlines. A useful
-test: if the sentence contains two things a seller could separately
-pass or fail, it must become two items.
-
-If the tender lists a labeled specification table or a bullet list
-(e.g. "Processor: ...; Memory: ...; Storage: ...; Warranty: ..."),
-split it into one requirement item PER LABEL/LINE. Do not merge them
-into a single combined string. Keep each label with its own value, and
-drop the trailing separator (";", ",") when it is not part of the
-value itself.
-
-Example of the required shape (note: several requirement objects,
-one per line item, all citing the same page/file they came from):
+EXAMPLE (one requirement object per line item, all citing the page/file they came from)
 {{
     "requirements": [
         {{"requirement": "Processor: Intel Core i5 / AMD Ryzen 5 equivalent or better", "page": 4, "file": "example.pdf"}},
@@ -113,28 +151,7 @@ one per line item, all citing the same page/file they came from):
     ]
 }}
 
-Rules:
-- Extract only explicit, seller-facing buyer requirements as defined
-  above. Do not invent, infer, or generalize beyond what is written.
-- Split any compound/list-style requirement into separate atomic
-  items, one condition per item, even if the source text presents
-  them as one run-on sentence or a semicolon/comma-separated list.
-- Never join two or more distinct conditions into a single
-  "requirement" string with ";", " and ", or similar.
-- Preserve numbers, quantities, limits, standards and conditions
-  exactly as written for each individual item - do not round,
-  convert units, or paraphrase specifics.
-- Keep each item's own label/prefix (e.g. "Processor:", "Memory:") if
-  the source uses labels, so the item stays understandable on its own
-  without the surrounding table.
-- Include the source PDF filename and exact page number for every
-  item, copied exactly from the FILE/PAGE markers of the page it came
-  from - never guess or reuse a neighboring page's marker.
-- Skip headings, page numbers, and administrative boilerplate that
-  imposes no condition on the seller.
-- If there are no requirements in this chunk, return {{"requirements": []}}.
-- Do not create IDs. IDs will be assigned after consolidation.
-- Return JSON only.
+If this chunk contains no requirements, return {{"requirements": []}}.
 
 TENDER PAGES:
 
@@ -258,9 +275,15 @@ def deduplicate(requirements):
 def detect_requirements(tender_dir):
     pages = load_pages(tender_dir)
 
+    eligibility_page = load_eligibility_page(tender_dir)
+    if eligibility_page is not None:
+        # Put it first so it lands in its own/earliest chunk rather than
+        # being silently appended after however many PDF pages exist.
+        pages = [eligibility_page] + pages
+
     if not pages:
         raise ValueError(
-            f"No processed tender pages found in: {tender_dir}"
+            f"No processed tender pages or eligibility text found in: {tender_dir}"
         )
 
     chunks = build_chunks(pages)

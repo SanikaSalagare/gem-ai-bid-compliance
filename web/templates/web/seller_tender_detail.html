@@ -63,6 +63,31 @@
 </div>
 
 <div class="card">
+    <div class="card-header"><h2>Tender Documents</h2></div>
+    {% if tender.documents %}
+    <div class="data-table-wrap">
+    <table class="data-table">
+        <thead><tr><th>File</th><th></th></tr></thead>
+        <tbody>
+        {% for doc in tender.documents %}
+            <tr>
+                <td>{{ doc }}</td>
+                <td><a class="button small" href="{% url 'seller_tender_document_viewer' tender.tender_id doc %}">Inspect</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="card-subtle" style="margin-top:10px;">These are the buyer's published tender documents - the same source material the requirements above were extracted from.</p>
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">&#128196;</div>
+        <p>The buyer hasn't uploaded any tender documents yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
     <div class="card-header"><h2>Your Bids</h2></div>
     {% if bids %}
     <div class="data-table-wrap">

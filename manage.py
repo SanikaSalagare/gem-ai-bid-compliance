@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import json
 import uuid
 import shutil
@@ -159,6 +160,16 @@ def _compute_tender_document_hashes(tender_dir):
             # run instead of being silently treated as done.
             if text_extractor.processed_hash_matches(pdf_path, processed_dir):
                 hashes[pdf_path.name] = text_extractor.get_pdf_hash(pdf_path)
+
+    # Keep in sync with scripts/tender_queue._compute_document_hashes:
+    # the eligibility text field is also fed into requirement extraction
+    # (see requirement_detector.load_eligibility_page), so it must
+    # participate in change-detection too.
+    eligibility_page = requirement_detector.load_eligibility_page(tender_dir)
+    if eligibility_page is not None:
+        hashes[requirement_detector.ELIGIBILITY_SOURCE_LABEL] = hashlib.sha256(
+            eligibility_page["text"].encode("utf-8")
+        ).hexdigest()
 
     return hashes
 

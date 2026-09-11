@@ -308,7 +308,7 @@ def compliance_detail(request, tender_id, bid_id, requirement_id):
     })
 
 
-def document_viewer(request, tender_id, filename, bid_id=None):
+def document_viewer(request, tender_id, filename, bid_id=None, portal="buyer"):
     if bid_id is None:
         if manage.get_tender(tender_id) is None:
             raise Http404("Tender not found")
@@ -332,13 +332,14 @@ def document_viewer(request, tender_id, filename, bid_id=None):
         "tender_id": tender_id,
         "tender_title": services.get_tender_title(tender_id),
         "bid_id": bid_id,
+        "portal": portal,
         "filename": filename,
         "documents": available,
         "pages": pages,
         "processed": services.is_document_processed(tender_id, filename, bid_id),
         "requested_page": requested_page,
         "view": request.GET.get("view", "text"),
-        "active_nav": "tenders",
+        "active_nav": "tenders" if portal == "buyer" else "seller",
     })
 
 

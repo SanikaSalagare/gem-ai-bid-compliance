@@ -2,9 +2,14 @@
 {% block title %}{{ filename }}{% endblock %}
 {% block breadcrumbs %}
 <div class="breadcrumbs">
-    <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
-    <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
-    <a href="{% url 'tender_detail' tender_id %}">{{ tender_title|default:tender_id }} <span class="muted-cell">({{ tender_id }})</span></a><span class="sep">/</span>
+    {% if portal == "seller" %}
+        <a href="{% url 'seller_dashboard' %}">Open Tenders</a><span class="sep">/</span>
+        <a href="{% url 'seller_tender_detail' tender_id %}">{{ tender_title|default:tender_id }} <span class="muted-cell">({{ tender_id }})</span></a><span class="sep">/</span>
+    {% else %}
+        <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
+        <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
+        <a href="{% url 'tender_detail' tender_id %}">{{ tender_title|default:tender_id }} <span class="muted-cell">({{ tender_id }})</span></a><span class="sep">/</span>
+    {% endif %}
     {% if bid_id %}
         <a href="{% url 'bid_detail' tender_id bid_id %}">{{ bid_id }}</a><span class="sep">/</span>
     {% endif %}
@@ -25,6 +30,11 @@
            href="{% url 'bid_document_viewer' tender_id bid_id filename %}?view=text{% if requested_page %}&page={{ requested_page }}{% endif %}">TEXT VIEW</a>
         <a class="doc-tab {% if view == 'pdf' %}active{% endif %}"
            href="{% url 'bid_document_viewer' tender_id bid_id filename %}?view=pdf{% if requested_page %}&page={{ requested_page }}{% endif %}">PDF VIEW</a>
+    {% elif portal == "seller" %}
+        <a class="doc-tab {% if view != 'pdf' %}active{% endif %}"
+           href="{% url 'seller_tender_document_viewer' tender_id filename %}?view=text{% if requested_page %}&page={{ requested_page }}{% endif %}">TEXT VIEW</a>
+        <a class="doc-tab {% if view == 'pdf' %}active{% endif %}"
+           href="{% url 'seller_tender_document_viewer' tender_id filename %}?view=pdf{% if requested_page %}&page={{ requested_page }}{% endif %}">PDF VIEW</a>
     {% else %}
         <a class="doc-tab {% if view != 'pdf' %}active{% endif %}"
            href="{% url 'tender_document_viewer' tender_id filename %}?view=text{% if requested_page %}&page={{ requested_page }}{% endif %}">TEXT VIEW</a>
@@ -39,6 +49,9 @@
             {% if bid_id %}
                 <a class="doc-list-item {% if doc == filename %}active{% endif %}"
                    href="{% url 'bid_document_viewer' tender_id bid_id doc %}?view={{ view }}">{{ doc }}</a>
+            {% elif portal == "seller" %}
+                <a class="doc-list-item {% if doc == filename %}active{% endif %}"
+                   href="{% url 'seller_tender_document_viewer' tender_id doc %}?view={{ view }}">{{ doc }}</a>
             {% else %}
                 <a class="doc-list-item {% if doc == filename %}active{% endif %}"
                    href="{% url 'tender_document_viewer' tender_id doc %}?view={{ view }}">{{ doc }}</a>
@@ -49,7 +62,7 @@
     <div class="doc-pane">
         {% if view == 'pdf' %}
             <iframe class="pdf-frame"
-                src="{% if bid_id %}{% url 'bid_document_pdf' tender_id bid_id filename %}{% else %}{% url 'tender_document_pdf' tender_id filename %}{% endif %}{% if requested_page %}#page={{ requested_page }}{% endif %}"
+                src="{% if bid_id %}{% url 'bid_document_pdf' tender_id bid_id filename %}{% elif portal == "seller" %}{% url 'seller_tender_document_pdf' tender_id filename %}{% else %}{% url 'tender_document_pdf' tender_id filename %}{% endif %}{% if requested_page %}#page={{ requested_page }}{% endif %}"
                 title="{{ filename }}"></iframe>
         {% elif not processed %}
             <div class="empty-state">
@@ -81,6 +94,9 @@
         {% if bid_id %}
             <a class="button small {% if requested_page == page.page or not requested_page and forloop.first %}primary{% else %}ghost{% endif %}"
                href="{% url 'bid_document_viewer' tender_id bid_id filename %}?view={{ view }}&page={{ page.page }}">{{ page.page }}</a>
+        {% elif portal == "seller" %}
+            <a class="button small {% if requested_page == page.page or not requested_page and forloop.first %}primary{% else %}ghost{% endif %}"
+               href="{% url 'seller_tender_document_viewer' tender_id filename %}?view={{ view }}&page={{ page.page }}">{{ page.page }}</a>
         {% else %}
             <a class="button small {% if requested_page == page.page or not requested_page and forloop.first %}primary{% else %}ghost{% endif %}"
                href="{% url 'tender_document_viewer' tender_id filename %}?view={{ view }}&page={{ page.page }}">{{ page.page }}</a>

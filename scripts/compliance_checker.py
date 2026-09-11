@@ -86,51 +86,57 @@ def build_prompt(requirement, pages):
     )
 
     return f"""
-You are a procurement compliance reviewer. Decide whether the seller's
-document evidence below satisfies ONE specific tender requirement.
+You are a procurement compliance reviewer for an Indian Government
+e-Marketplace (GeM) tender. Your task is to decide, strictly from the
+seller evidence provided below, how well the seller's bid satisfies
+ONE specific tender requirement.
 
-Requirement (the exact condition the seller's bid must satisfy):
+REQUIREMENT TO CHECK
 {json.dumps(requirement, ensure_ascii=False)}
 
-Seller document evidence (the only source of truth you may use):
+SELLER EVIDENCE (your only source of truth - do not use outside
+knowledge of products, standards, or typical specifications)
 {evidence_text}
 
-Return ONLY valid JSON (no markdown fences, no commentary) with
-exactly:
-{{
-    "score": 0,
-    "file": null,
-    "page": null,
-    "evidence": null
-}}
+HOW TO DECIDE
+1. Identify the exact condition the requirement imposes: a number, a
+   standard/certification, a delivery or commercial term, etc.
+2. Search the evidence for a passage addressing that exact condition,
+   even if it uses different wording for the same thing (e.g. "CPU"
+   for "Processor", "12 months" for "1 year").
+3. Compare what the evidence actually states against what the
+   requirement asks for:
+   - An equal-or-better spec satisfies the requirement (32 GB RAM
+     satisfies "Minimum 16 GB RAM").
+   - A lesser, vaguer, or unstated spec does not, even if it is close.
+   - Compliance is a spectrum: score the degree to which it is met
+     rather than forcing a binary pass/fail.
+4. Never invent, assume, or infer a fact, number, or certification
+   that is not written in the evidence. Evidence that is silent on the
+   requirement means "no evidence found" - not a pass.
 
-How to evaluate:
-- Compare the requirement's specific numbers, standards, and
-  conditions against what the evidence actually states. An equal or
-  better spec than the requirement asks for still counts as met
-  (e.g. 32 GB RAM satisfies "Minimum 16 GB RAM"); a lesser spec does
-  not, even if it is close.
-- Base the score only on the supplied evidence text - never assume,
-  extrapolate from general product knowledge, or give credit for
-  something the evidence doesn't actually say.
-- If the evidence uses different wording for the same thing the
-  requirement asks about (e.g. "CPU" for "Processor"), treat it as
-  relevant and evaluate it on its merits.
-
-Scoring scale (integer 0-100):
-- 100: the evidence clearly and completely satisfies the requirement, with no gap.
-- 90-99: essentially complete compliance with only a very minor, non-material gap.
-- 75-89: strong compliance but one meaningful detail is incomplete or uncertain.
-- 60-74: substantial but incomplete/partial compliance - more met than missing.
+SCORING SCALE (integer 0-100)
+- 100: evidence completely and unambiguously satisfies the requirement.
+- 90-99: essentially complete compliance; only a trivial, non-material gap.
+- 75-89: strong compliance; one meaningful detail is incomplete or unclear.
+- 60-74: substantial compliance; more of the requirement is met than missing.
 - 40-59: mixed evidence; important parts of the requirement are missing or unclear.
-- 20-39: weak evidence, or the evidence falls clearly short of what's required.
-- 1-19: evidence is present but gives almost no support for compliance.
-- 0: no relevant evidence is present, OR the evidence directly contradicts/fails the requirement.
-- Compliance is a spectrum, not a binary choice - use intermediate scores whenever the evidence is partial, ambiguous, or only indirectly relevant. Do not round up to 100 or down to 0 just because the call is hard.
-- Never invent evidence, specifications, certifications, pages, or facts that are not in the text above.
-- When evidence supports the requirement, cite the exact source file and page with the single strongest supporting passage.
-- If no useful evidence exists anywhere in the supplied pages, use null for file, page, and evidence, and score 0.
-- Keep "evidence" short (one sentence) and directly grounded in the supplied text - do not paraphrase into a stronger claim than the source actually makes.
+- 20-39: weak evidence that clearly falls short of the requirement.
+- 1-19: evidence exists but offers almost no real support for compliance.
+- 0: no relevant evidence anywhere in the supplied pages, OR the evidence directly contradicts/fails the requirement.
+Use the full scale. Do not default to a round number (0, 50, 100)
+just because the judgment call is hard - an honest intermediate score
+is more useful than a false binary one.
+
+OUTPUT
+Return ONLY valid JSON - no markdown fences, no commentary, no keys
+other than these four:
+{{
+    "score": <integer 0-100>,
+    "file": <source filename of the strongest supporting passage, or null if score is 0>,
+    "page": <page number of that passage, or null if score is 0>,
+    "evidence": <one short sentence quoting/closely grounded in that passage - never a stronger claim than the source supports - or null if score is 0>
+}}
 """
 
 

@@ -51,6 +51,17 @@ urlpatterns = [
     path("seller/", views.seller_dashboard, name="seller_dashboard"),
     path("seller/tenders/<str:tender_id>/", views.seller_tender_detail, name="seller_tender_detail"),
     path(
+        "seller/tenders/<str:tender_id>/documents/<str:filename>/",
+        views.document_viewer,
+        {"portal": "seller"},
+        name="seller_tender_document_viewer",
+    ),
+    path(
+        "seller/tenders/<str:tender_id>/documents/<str:filename>/pdf/",
+        views.document_pdf,
+        name="seller_tender_document_pdf",
+    ),
+    path(
         "seller/tenders/<str:tender_id>/bids/create/",
         views.seller_create_bid,
         name="seller_create_bid",

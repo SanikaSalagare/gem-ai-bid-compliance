@@ -21,7 +21,7 @@
             <div class="side-group">
                 <div class="side-group-label">Buyer</div>
                 <a class="side-link {% if active_nav == 'dashboard' %}active{% endif %}" href="{% url 'buyer_dashboard' %}">Dashboard</a>
-                <a class="side-link {% if active_nav == 'tenders' %}active{% endif %}" href="{% url 'tender_list' %}">All Tenders</a>
+                <a class="side-link {% if active_nav == 'tenders' and status_filter != 'ready' %}active{% endif %}" href="{% url 'tender_list' %}">All Tenders</a>
                 <a class="side-link {% if active_nav == 'tenders' and status_filter == 'ready' %}active{% endif %}" href="{% url 'tender_list' %}?status=ready">Requirements Ready</a>
             </div>
         {% endif %}

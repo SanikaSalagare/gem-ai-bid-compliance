@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
-import queue
 import threading
 import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from scripts import requirement_detector, text_extractor
-from scripts.model_manager import reset_context
+from scripts import job_queue, requirement_detector, text_extractor
 from scripts.atomic_io import merge_write_json
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -24,9 +23,19 @@ STATUS_FILENAME = "processing_status.json"
 # since manage.py imports from this module's siblings.
 TENDER_FILE_HASHES_KEY = "_file_hashes"
 
-_jobs: queue.Queue[dict] = queue.Queue()
+# Every job actually executes on the single shared worker in
+# scripts/job_queue.py (see that module for why: a tender-processing job
+# and a bid-compliance job must never run at the same time). This lock
+# only protects the bookkeeping below - _active_tenders and the status
+# file - from being read/written by two requests at once.
 _jobs_lock = threading.RLock()
-_worker_started = False
+
+# tender_id -> True while a processing job for that tender is queued or
+# running. Lets enqueue() recognise "this tender already has a job in
+# flight" and hand back that job instead of piling on a duplicate -
+# e.g. if a buyer double-clicks "Process Documents", or reloads the page
+# and it re-submits the form.
+_active_tenders: set[str] = set()
 
 
 def _now():
@@ -59,6 +68,17 @@ def _compute_document_hashes(tender_dir):
             # marked done forever.
             if text_extractor.processed_hash_matches(pdf_path, processed_dir):
                 hashes[pdf_path.name] = text_extractor.get_pdf_hash(pdf_path)
+
+    # The buyer-entered eligibility text is fed into requirement
+    # extraction too (see requirement_detector.load_eligibility_page),
+    # so it must participate in change-detection - otherwise editing
+    # eligibility text alone would never trigger a re-run since no PDF
+    # hash changed.
+    eligibility_page = requirement_detector.load_eligibility_page(tender_dir)
+    if eligibility_page is not None:
+        hashes[requirement_detector.ELIGIBILITY_SOURCE_LABEL] = hashlib.sha256(
+            eligibility_page["text"].encode("utf-8")
+        ).hexdigest()
 
     return hashes
 
@@ -96,58 +116,63 @@ def _run_processing(tender_id):
     requirement_detector.process_tender(tender_dir)
 
 
-def _worker():
-    while True:
-        job = _jobs.get()
-        try:
-            with _jobs_lock:
-                job["status"] = "processing"
-                job["started_at"] = _now()
-                _persist(job)
+def _run_job(job):
+    """The actual work for one job, run on job_queue's shared worker.
+    Guaranteed never to overlap with any other tender-processing job OR
+    any bid-compliance job (see scripts/job_queue.py)."""
+    try:
+        with _jobs_lock:
+            job["status"] = "processing"
+            job["started_at"] = _now()
+            _persist(job)
 
-            reset_context()
-            _run_processing(job["tender_id"])
+        _run_processing(job["tender_id"])
 
-            with _jobs_lock:
-                job["status"] = "completed"
-                job["finished_at"] = _now()
-                _persist(job)
-        except Exception as exc:
-            traceback.print_exc()
-            with _jobs_lock:
-                job["status"] = "failed"
-                job["error"] = str(exc)
-                job["finished_at"] = _now()
-                _persist(job)
-        finally:
-            reset_context()
-            _jobs.task_done()
-
-
-def _ensure_worker():
-    global _worker_started
-    with _jobs_lock:
-        if not _worker_started:
-            thread = threading.Thread(target=_worker, name="gem-tender-worker", daemon=True)
-            thread.start()
-            _worker_started = True
+        with _jobs_lock:
+            job["status"] = "completed"
+            job["finished_at"] = _now()
+            _persist(job)
+    except Exception as exc:
+        traceback.print_exc()
+        with _jobs_lock:
+            job["status"] = "failed"
+            job["error"] = str(exc)
+            job["finished_at"] = _now()
+            _persist(job)
+    finally:
+        with _jobs_lock:
+            _active_tenders.discard(job["tender_id"])
 
 
 def enqueue(tender_id):
-    _ensure_worker()
-    job_id = f"processing_{uuid.uuid4().hex[:10]}"
-    job = {
-        "job_id": job_id,
-        "tender_id": tender_id,
-        "status": "queued",
-        "queued_at": _now(),
-        "started_at": None,
-        "finished_at": None,
-        "error": None,
-    }
+    """Queue document processing + requirement extraction for a tender.
+
+    If a job for this tender is already queued or running, that existing
+    job is returned instead of enqueuing a duplicate - so a repeated
+    "Process Documents" click (double-click, page refresh resubmitting
+    the form, etc.) can't stack up redundant runs against the same
+    tender.
+    """
     with _jobs_lock:
+        if tender_id in _active_tenders:
+            existing = get_status(tender_id)
+            if existing is not None and existing.get("status") in ("queued", "processing"):
+                return existing
+
+        job_id = f"processing_{uuid.uuid4().hex[:10]}"
+        job = {
+            "job_id": job_id,
+            "tender_id": tender_id,
+            "status": "queued",
+            "queued_at": _now(),
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+        }
+        _active_tenders.add(tender_id)
         _persist(job)
-        _jobs.put(job)
+
+    job_queue.submit(lambda: _run_job(job))
     return job
 
 
