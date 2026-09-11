@@ -9,6 +9,17 @@ MODEL_PATH = ROOT_DIR / "AI" / "models" / "Qwen3-8B-Q4_K_M.gguf"
 _lock = threading.RLock()
 _llm = None
 
+# Guards actual inference calls (llm.create_chat_completion(...)), as
+# opposed to `_lock` above which only guards loading/resetting the model.
+# There are now two independent background workers that can want the LLM
+# at the same time - scripts/tender_queue.py (requirement extraction) and
+# scripts/compliance_queue.py (bid evaluation) - and a single llama_cpp
+# Llama instance is not safe to call concurrently from multiple threads.
+# Callers must hold this for the duration of each create_chat_completion
+# call (see requirement_detector.extract_chunk_requirements and
+# compliance_checker.evaluate_requirement).
+LLM_LOCK = threading.RLock()
+
 
 def get_llm():
     global _llm
@@ -28,7 +39,7 @@ def get_llm():
                 # silently closed out with an empty "[]"/"{}" instead of
                 # erroring. Match the model's trained context so there is
                 # always room for the completion.
-                n_ctx=8192,
+                n_ctx=32768,
                 verbose=False,
             )
         return _llm

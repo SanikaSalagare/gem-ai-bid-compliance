@@ -4,7 +4,7 @@
 <div class="breadcrumbs">
     <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
     <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
-    <a href="{% url 'tender_detail' tender_id %}">{{ tender_id }}</a><span class="sep">/</span>
+    <a href="{% url 'tender_detail' tender_id %}">{{ tender_title|default:tender_id }} <span class="muted-cell">({{ tender_id }})</span></a><span class="sep">/</span>
     <a href="{% url 'tender_detail' tender_id %}?tab=requirements">Requirements</a><span class="sep">/</span>
     <span class="current">REQ-{{ requirement.id|stringformat:"03d" }}</span>
 </div>

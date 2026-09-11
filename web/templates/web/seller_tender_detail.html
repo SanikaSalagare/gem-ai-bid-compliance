@@ -1,16 +1,16 @@
 {% extends "web/app_base.html" %}
-{% block title %}Tender {{ tender.tender_id }}{% endblock %}
+{% block title %}{{ tender.title }}{% endblock %}
 {% block breadcrumbs %}
 <div class="breadcrumbs">
     <a href="{% url 'seller_dashboard' %}">Open Tenders</a><span class="sep">/</span>
-    <span class="current">{{ tender.tender_id }}</span>
+    <span class="current">{{ tender.title }}</span>
 </div>
 {% endblock %}
 {% block content %}
 <div class="page-header">
     <div>
-        <h1>{{ tender.tender_id }}</h1>
-        <p class="lead">{{ tender.requirement_count }} published requirement{{ tender.requirement_count|pluralize }}</p>
+        <h1>{{ tender.title }}</h1>
+        <p class="lead">{{ tender.requirement_count }} published requirement{{ tender.requirement_count|pluralize }} &middot; {{ tender.tender_id }}</p>
     </div>
     <div class="header-actions">
         <form method="post" action="{% url 'seller_create_bid' tender.tender_id %}">
@@ -18,6 +18,23 @@
             <button type="submit" class="button primary">Submit New Bid</button>
         </form>
     </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>Buyer Information</h2></div>
+    <div class="metadata-grid">
+        <div><span>Buyer</span><strong>{{ tender.buyer.name }}</strong></div>
+        <div><span>Organization</span><strong>{{ tender.buyer.organization }}</strong></div>
+        <div><span>GeM Category</span><strong>{{ tender.metadata.category|default:"—" }}</strong></div>
+        <div><span>Quantity</span><strong>{{ tender.metadata.quantity|default:"—" }}</strong></div>
+        <div><span>Bid type</span><strong>{{ tender.metadata.bid_type|default:"—" }}</strong></div>
+        <div><span>Bid validity</span><strong>{{ tender.metadata.bid_validity|default:"—" }}</strong></div>
+        <div><span>Delivery period</span><strong>{{ tender.metadata.delivery_period|default:"—" }}</strong></div>
+        <div><span>EMD</span><strong>{% if tender.metadata.emd_required %}Required{% else %}Not specified{% endif %}</strong></div>
+        <div><span>Performance security</span><strong>{% if tender.metadata.performance_security_required %}Required{% else %}Not specified{% endif %}</strong></div>
+    </div>
+    {% if tender.metadata.description %}<p class="tender-description">{{ tender.metadata.description }}</p>{% endif %}
+    {% if tender.metadata.eligibility %}<div class="detail-block"><h4>Eligibility</h4><p>{{ tender.metadata.eligibility }}</p></div>{% endif %}
 </div>
 
 <div class="card">
@@ -55,7 +72,7 @@
         {% for bid in bids %}
             <tr>
                 <td class="id-cell">{{ bid.bid_id }}</td>
-                <td>{% if bid.evaluation_ready %}{{ bid.overall_score }}%{% else %}<span class="status-badge pending"><span class="icon">&#9675;</span>Not Evaluated</span>{% endif %}</td>
+                <td>{% if bid.evaluation_ready %}{{ bid.overall_score }}%{% if bid.evaluation_partial %} <span class="muted-cell">({{ bid.evaluated_count }}/{{ bid.total_requirements }} checked)</span>{% endif %}{% else %}<span class="status-badge pending"><span class="icon">&#9675;</span>Not Evaluated</span>{% endif %}</td>
                 <td><a class="button small" href="{% url 'seller_bid_detail' tender.tender_id bid.bid_id %}">View</a></td>
             </tr>
         {% endfor %}

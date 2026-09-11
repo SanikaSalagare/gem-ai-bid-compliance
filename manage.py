@@ -86,9 +86,27 @@ def update_tender_metadata(tender_id, metadata):
     atomic_write_json(path, data)
 
 
+def _resolve_within(base_dir, candidate_dir):
+    """Resolve candidate_dir and confirm it is actually inside base_dir.
+
+    tender_id/bid_id come straight from the URL and are used to build
+    filesystem paths; without this check a value like ".." would resolve
+    outside TENDERS_DIR while still passing a plain exists()/is_dir()
+    test. Returns the resolved dir, or None if it escapes base_dir or
+    doesn't exist.
+    """
+    base_dir = base_dir.resolve()
+    try:
+        resolved = candidate_dir.resolve()
+        resolved.relative_to(base_dir)
+    except (OSError, ValueError):
+        return None
+    return resolved if resolved.exists() and resolved.is_dir() else None
+
+
 def get_tender(tender_id):
     tender_dir = TENDERS_DIR / tender_id
-    return tender_dir if tender_dir.exists() and tender_dir.is_dir() else None
+    return _resolve_within(TENDERS_DIR, tender_dir)
 
 
 def list_tenders():
@@ -130,11 +148,17 @@ def add_tender_document(tender_id, file_path):
 
 def _compute_tender_document_hashes(tender_dir):
     documents_dir = tender_dir / "tender_documents"
+    processed_dir = documents_dir / "processed"
     hashes = {}
 
     if documents_dir.exists():
         for pdf_path in sorted(documents_dir.glob("*.pdf")):
-            hashes[pdf_path.name] = text_extractor.get_pdf_hash(pdf_path)
+            # Only record a hash for files that were actually extracted
+            # successfully. A file whose extraction failed is left out
+            # entirely, so it keeps looking "changed" on every future
+            # run instead of being silently treated as done.
+            if text_extractor.processed_hash_matches(pdf_path, processed_dir):
+                hashes[pdf_path.name] = text_extractor.get_pdf_hash(pdf_path)
 
     return hashes
 
@@ -182,6 +206,14 @@ def generate_requirements(tender_id):
 
 
 def process_tender(tender_id):
+    """Synchronous document processing + requirement extraction.
+
+    Kept for CLI/scripting use (see `if __name__ == "__main__"` at the
+    bottom of this module and scripts/*.py's own __main__ blocks). The web
+    app does NOT call this directly - it can take minutes for a
+    multi-page tender, so it uses check_tender_processing() below to run
+    the same work on a background thread instead of blocking a request.
+    """
     tender_dir = get_tender(tender_id)
     if tender_dir is None:
         raise FileNotFoundError(f"Tender not found: {tender_id}")
@@ -197,6 +229,27 @@ def process_tender(tender_id):
     return generate_requirements(tender_id)
 
 
+def check_tender_processing(tender_id):
+    """Queue document processing + requirement extraction on the
+    background worker and return immediately with the queued job.
+
+    This is what web views should call (see web/views.py process_tender)
+    instead of process_tender(), which runs synchronously and would block
+    the request for as long as the LLM takes.
+    """
+    tender_dir = get_tender(tender_id)
+    if tender_dir is None:
+        raise FileNotFoundError(f"Tender not found: {tender_id}")
+
+    from scripts.tender_queue import enqueue
+    return enqueue(tender_id)
+
+
+def get_tender_processing_status(tender_id):
+    from scripts.tender_queue import get_status
+    return get_status(tender_id)
+
+
 def get_requirements(tender_id):
     tender_dir = get_tender(tender_id)
     if tender_dir is None:
@@ -209,16 +262,37 @@ def get_requirements(tender_id):
     return json.loads(requirements_path.read_text(encoding="utf-8"))
 
 
-def create_bid(tender_id):
+BID_METADATA_FILENAME = "bid.json"
+
+
+def create_bid(tender_id, metadata=None):
     tender_dir = get_tender(tender_id)
     if tender_dir is None:
         raise FileNotFoundError(f"Tender not found: {tender_id}")
 
     bid_id = f"bid_{uuid.uuid4().hex[:8]}"
-    bid_dir = tender_dir / "bids" / bid_id / "documents"
-    bid_dir.mkdir(parents=True, exist_ok=True)
+    bid_dir = tender_dir / "bids" / bid_id
+    (bid_dir / "documents").mkdir(parents=True, exist_ok=True)
+
+    if metadata:
+        atomic_write_json(bid_dir / BID_METADATA_FILENAME, metadata)
 
     return bid_id
+
+
+def get_bid_metadata(tender_id, bid_id):
+    bid_dir = get_bid(tender_id, bid_id)
+    if bid_dir is None:
+        return None
+
+    path = bid_dir / BID_METADATA_FILENAME
+    if not path.exists():
+        return {}
+
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
 
 
 def get_bid(tender_id, bid_id):
@@ -226,8 +300,9 @@ def get_bid(tender_id, bid_id):
     if tender_dir is None:
         return None
 
-    bid_dir = tender_dir / "bids" / bid_id
-    return bid_dir if bid_dir.exists() and bid_dir.is_dir() else None
+    bids_dir = tender_dir / "bids"
+    bid_dir = bids_dir / bid_id
+    return _resolve_within(bids_dir, bid_dir)
 
 
 def list_bids(tender_id):
@@ -291,6 +366,28 @@ def get_analysis_status(tender_id, bid_id):
 def process_bid(tender_id, bid_id):
     process_bid_documents(tender_id, bid_id)
     return check_bid_compliance(tender_id, bid_id)
+
+
+def is_bid_analysis_stale(tender_id, bid_id):
+    """True if this bid's documents have changed since its last completed
+    compliance run - i.e. there's a completed/queued/processing analysis
+    on record, but a newly-uploaded (or removed/edited) document means
+    re-running would pick up something new.
+
+    Returns False if no analysis has ever run yet (nothing to be "stale"
+    relative to), even if the bid already has documents.
+    """
+    bid_dir = get_bid(tender_id, bid_id)
+    if bid_dir is None:
+        raise FileNotFoundError(f"Bid not found: {bid_id}")
+
+    status = get_analysis_status(tender_id, bid_id) or {}
+    recorded_hash = status.get("bid_documents_hash")
+    if recorded_hash is None:
+        return False
+
+    from scripts.compliance_checker import compute_bid_documents_hash
+    return compute_bid_documents_hash(bid_dir) != recorded_hash
 
 
 def get_compliance(tender_id, bid_id):

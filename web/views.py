@@ -1,9 +1,12 @@
 from pathlib import Path
+import shutil
 import tempfile
+import uuid
 
 from django.contrib import messages
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 
 import manage
 from web import services
@@ -31,20 +34,80 @@ def switch_account(request):
 # Upload staging
 # ---------------------------------------------------------------------------
 # manage.add_tender_document / add_bid_document expect a filesystem path to
-# an existing PDF (they were written to accept files already on disk), so an
-# uploaded file is first streamed into a temporary staging folder and that
-# path is handed to the unmodified backend function.
+# an existing PDF (they were written to accept files already on disk), so
+# uploaded files are first streamed into a temporary staging folder and
+# those paths are handed to the unmodified backend function.
 
 _UPLOAD_STAGING_DIR = Path(tempfile.gettempdir()) / "sih_upload_staging"
 
 
-def _stage_upload(uploaded_file) -> Path:
-    _UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
-    destination = _UPLOAD_STAGING_DIR / uploaded_file.name
-    with destination.open("wb") as out:
-        for chunk in uploaded_file.chunks():
-            out.write(chunk)
-    return destination
+def _stage_uploads(uploaded_files) -> tuple[Path, list[Path]]:
+    """Stage a batch of uploaded files on disk and return (staging_dir,
+    paths). Each call gets its own uuid-named subdirectory, so concurrent
+    uploads - even of files that happen to share a name - never collide or
+    clobber each other. Callers must remove `staging_dir` once they're
+    done with the files (see _cleanup_staged).
+    """
+    staging_dir = _UPLOAD_STAGING_DIR / uuid.uuid4().hex
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    paths = []
+    for uploaded_file in uploaded_files:
+        # uploaded_file.name is client-supplied and untrusted - take only
+        # the final path component so a crafted name like "../../x.pdf"
+        # can never land outside staging_dir.
+        safe_name = Path(uploaded_file.name).name
+        if not safe_name or safe_name in {".", ".."}:
+            continue
+        destination = staging_dir / safe_name
+        with destination.open("wb") as out:
+            for chunk in uploaded_file.chunks():
+                out.write(chunk)
+        paths.append(destination)
+
+    return staging_dir, paths
+
+
+def _cleanup_staged(staging_dir: Path) -> None:
+    shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def _save_uploaded_documents(request, add_document, redirect_response):
+    """Shared upload handling for both tender and bid document uploads:
+    stage every file in request.FILES.getlist("documents"), hand each one
+    to `add_document(path)`, report how many succeeded/failed, and always
+    clean up the staging directory afterwards - regardless of how many
+    documents were uploaded, this can now be called after AI
+    processing/compliance analysis has already run, since neither
+    manage.add_tender_document nor manage.add_bid_document gate on that.
+    """
+    uploaded_files = request.FILES.getlist("documents")
+    if request.method != "POST" or not uploaded_files:
+        return redirect_response
+
+    staging_dir, staged_paths = _stage_uploads(uploaded_files)
+    uploaded_count = 0
+    errors = []
+
+    try:
+        for path in staged_paths:
+            try:
+                add_document(path)
+                uploaded_count += 1
+            except (FileNotFoundError, ValueError) as exc:
+                errors.append(f"{path.name}: {exc}")
+    finally:
+        _cleanup_staged(staging_dir)
+
+    if uploaded_count:
+        messages.success(
+            request,
+            f"{uploaded_count} document{'s' if uploaded_count != 1 else ''} uploaded.",
+        )
+    for error in errors:
+        messages.error(request, error)
+
+    return redirect_response
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +198,7 @@ def tender_detail(request, tender_id):
         "tender": summary,
         "bids": bid_summaries,
         "tab": tab,
+        "processing_status": manage.get_tender_processing_status(tender_id),
         "active_nav": "tenders",
     })
 
@@ -143,14 +207,17 @@ def upload_tender_document(request, tender_id):
     if manage.get_tender(tender_id) is None:
         raise Http404("Tender not found")
 
-    if request.method == "POST" and request.FILES.get("document"):
-        try:
-            manage.add_tender_document(tender_id, _stage_upload(request.FILES["document"]))
-            messages.success(request, "Document uploaded.")
-        except (FileNotFoundError, ValueError) as exc:
-            messages.error(request, str(exc))
-
-    return redirect(f"{redirect('tender_detail', tender_id=tender_id).url}?tab=documents")
+    # Uploading is always allowed, including after requirements have
+    # already been extracted - the next "Process Documents" run will pick
+    # up any newly added file (see manage.process_tender_documents, which
+    # re-hashes the whole document set and only skips re-extraction when
+    # nothing has changed).
+    redirect_response = redirect(f"{reverse('tender_detail', args=[tender_id])}?tab=documents")
+    return _save_uploaded_documents(
+        request,
+        add_document=lambda path: manage.add_tender_document(tender_id, path),
+        redirect_response=redirect_response,
+    )
 
 
 def process_tender(request, tender_id):
@@ -159,12 +226,18 @@ def process_tender(request, tender_id):
 
     if request.method == "POST":
         try:
-            manage.process_tender(tender_id)
-            messages.success(request, "Documents processed and requirements extracted.")
-        except Exception as exc:  # backend processing failure, not a frontend bug
-            messages.error(request, f"Processing failed: {exc}")
+            job = manage.check_tender_processing(tender_id)
+            messages.success(request, f"Document processing queued as {job['job_id']}.")
+        except Exception as exc:
+            messages.error(request, f"Could not queue processing: {exc}")
 
-    return redirect(f"{redirect('tender_detail', tender_id=tender_id).url}?tab=requirements")
+    return redirect(f"{reverse('tender_detail', args=[tender_id])}?tab=requirements")
+
+
+def tender_processing_status(request, tender_id):
+    if manage.get_tender(tender_id) is None:
+        raise Http404("Tender not found")
+    return JsonResponse(manage.get_tender_processing_status(tender_id) or {"status": "not_started"})
 
 
 def requirement_detail(request, tender_id, requirement_id):
@@ -175,11 +248,12 @@ def requirement_detail(request, tender_id, requirement_id):
     if requirement is None:
         raise Http404("Requirement not found")
 
-    known_fields = {"id", "requirement", "file", "page"}
-    extra_fields = {k: v for k, v in requirement.items() if k not in known_fields}
+    from scripts.requirement_detector import REQUIREMENT_FIELDS
+    extra_fields = {k: v for k, v in requirement.items() if k not in REQUIREMENT_FIELDS}
 
     return render(request, "web/requirement_detail.html", {
         "tender_id": tender_id,
+        "tender_title": services.get_tender_title(tender_id),
         "requirement": requirement,
         "extra_fields": extra_fields,
         "active_nav": "tenders",
@@ -196,6 +270,7 @@ def bid_detail(request, tender_id, bid_id):
 
     return render(request, "web/bid_detail.html", {
         "tender_id": tender_id,
+        "tender_title": services.get_tender_title(tender_id),
         "bid": summary,
         "analysis_status": manage.get_analysis_status(tender_id, bid_id),
         "active_nav": "tenders",
@@ -226,6 +301,7 @@ def compliance_detail(request, tender_id, bid_id, requirement_id):
 
     return render(request, "web/compliance_detail.html", {
         "tender_id": tender_id,
+        "tender_title": services.get_tender_title(tender_id),
         "bid_id": bid_id,
         "row": row,
         "active_nav": "tenders",
@@ -254,6 +330,7 @@ def document_viewer(request, tender_id, filename, bid_id=None):
 
     return render(request, "web/document_viewer.html", {
         "tender_id": tender_id,
+        "tender_title": services.get_tender_title(tender_id),
         "bid_id": bid_id,
         "filename": filename,
         "documents": available,
@@ -302,8 +379,16 @@ def seller_dashboard(request):
     summaries = [services.get_tender_summary(tid) for tid in tender_ids]
     summaries = [s for s in summaries if s is not None and s.requirements_ready]
 
+    query = request.GET.get("q", "").strip().lower()
+    if query:
+        summaries = [
+            s for s in summaries
+            if query in s.title.lower() or query in s.tender_id.lower()
+        ]
+
     return render(request, "web/seller_dashboard.html", {
         "tenders": summaries,
+        "query": request.GET.get("q", ""),
         "active_nav": "seller",
     })
 
@@ -328,7 +413,8 @@ def seller_create_bid(request, tender_id):
         raise Http404("Tender not found")
 
     if request.method == "POST":
-        bid_id = manage.create_bid(tender_id)
+        seller_id = request.session.get("seller_id", SELLERS[0]["id"])
+        bid_id = manage.create_bid(tender_id, metadata={"seller_id": seller_id})
         messages.success(request, f"Bid {bid_id} created. Upload your documents to continue.")
         return redirect("seller_bid_detail", tender_id=tender_id, bid_id=bid_id)
 
@@ -345,6 +431,7 @@ def seller_bid_detail(request, tender_id, bid_id):
 
     return render(request, "web/seller_bid_detail.html", {
         "tender_id": tender_id,
+        "tender_title": services.get_tender_title(tender_id),
         "bid": summary,
         "analysis_status": manage.get_analysis_status(tender_id, bid_id),
         "active_nav": "seller",
@@ -355,14 +442,16 @@ def seller_upload_bid_document(request, tender_id, bid_id):
     if manage.get_bid(tender_id, bid_id) is None:
         raise Http404("Bid not found")
 
-    if request.method == "POST" and request.FILES.get("document"):
-        try:
-            manage.add_bid_document(tender_id, bid_id, _stage_upload(request.FILES["document"]))
-            messages.success(request, "Document uploaded.")
-        except (FileNotFoundError, ValueError) as exc:
-            messages.error(request, str(exc))
-
-    return redirect("seller_bid_detail", tender_id=tender_id, bid_id=bid_id)
+    # Uploading is always allowed, including after a compliance analysis
+    # has already completed - manage.add_bid_document doesn't gate on
+    # analysis status, and manage.is_bid_analysis_stale (surfaced in the
+    # template) tells the seller when it's worth re-running the check.
+    redirect_response = redirect("seller_bid_detail", tender_id=tender_id, bid_id=bid_id)
+    return _save_uploaded_documents(
+        request,
+        add_document=lambda path: manage.add_bid_document(tender_id, bid_id, path),
+        redirect_response=redirect_response,
+    )
 
 
 

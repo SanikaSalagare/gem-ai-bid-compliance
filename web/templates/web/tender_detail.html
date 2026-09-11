@@ -27,6 +27,14 @@
     </div>
 </div>
 
+{% if processing_status and processing_status.status == "queued" %}
+    <div class="queue-status queued"><strong>Queued</strong><span>Document processing is waiting for the next available slot.</span></div>
+{% elif processing_status and processing_status.status == "processing" %}
+    <div class="queue-status processing"><strong>Processing</strong><span>Extracting text and requirements from the uploaded documents.</span></div>
+{% elif processing_status and processing_status.status == "failed" %}
+    <div class="queue-status failed"><strong>Processing failed</strong><span>{{ processing_status.error }}</span></div>
+{% endif %}
+
 <div class="tabs">
     <a class="tab-link {% if tab == 'overview' %}active{% endif %}" href="?tab=overview">Overview</a>
     <a class="tab-link {% if tab == 'requirements' %}active{% endif %}" href="?tab=requirements">Requirements ({{ tender.requirement_count }})</a>
@@ -49,7 +57,7 @@
             <div><span>Bid validity</span><strong>{{ tender.metadata.bid_validity|default:"—" }}</strong></div>
             <div><span>EMD</span><strong>{% if tender.metadata.emd_required %}Required{% else %}Not specified{% endif %}</strong></div>
             <div><span>Performance security</span><strong>{% if tender.metadata.performance_security_required %}Required{% else %}Not specified{% endif %}</strong></div>
-            <div><span>Buyer</span><strong>{{ tender.metadata.buyer_id|default:"buyer_001" }}</strong></div>
+            <div><span>Buyer</span><strong>{{ tender.buyer.name }}</strong><span class="muted-cell">{{ tender.buyer.organization }}</span></div>
         </div>
         {% if tender.metadata.description %}<p class="tender-description">{{ tender.metadata.description }}</p>{% endif %}
         {% if tender.metadata.eligibility %}<div class="detail-block"><h4>Eligibility</h4><p>{{ tender.metadata.eligibility }}</p></div>{% endif %}
@@ -97,10 +105,11 @@
         <form method="post" action="{% url 'upload_tender_document' tender.tender_id %}" enctype="multipart/form-data" class="inline-form" style="margin-bottom:18px;">
             {% csrf_token %}
             <div class="file-input-wrap">
-                <input type="file" name="document" accept="application/pdf" required>
+                <input type="file" name="documents" accept="application/pdf" multiple required>
             </div>
-            <button type="submit" class="button primary">Upload PDF</button>
+            <button type="submit" class="button primary">Upload PDFs</button>
         </form>
+        <p class="card-subtle" style="margin-top:-10px;margin-bottom:18px;">You can select multiple files at once, and can keep uploading documents even after requirements have been processed - just re-run "Process Documents" to pick up anything new.</p>
 
         {% if tender.documents %}
         <div class="data-table-wrap">
@@ -129,12 +138,13 @@
         {% if bids %}
         <div class="data-table-wrap">
         <table class="data-table">
-            <thead><tr><th>Bid ID</th><th>Compliance</th><th>Compliant</th><th>Partial</th><th>Non-Compliant</th><th>Missing</th><th></th></tr></thead>
+            <thead><tr><th>Bid ID</th><th>Seller</th><th>Compliance</th><th>Compliant</th><th>Partial</th><th>Non-Compliant</th><th>Missing</th><th></th></tr></thead>
             <tbody>
             {% for bid in bids %}
                 <tr>
                     <td class="id-cell">{{ bid.bid_id }}</td>
-                    <td>{% if bid.evaluation_ready %}{{ bid.overall_score }}%{% else %}<span class="status-badge pending"><span class="icon">&#9675;</span>Not Evaluated</span>{% endif %}</td>
+                    <td>{% if bid.seller %}{{ bid.seller.name }}{% else %}<span class="muted-cell">—</span>{% endif %}</td>
+                    <td>{% if bid.evaluation_ready %}{{ bid.overall_score }}%{% if bid.evaluation_partial %} <span class="muted-cell">({{ bid.evaluated_count }}/{{ bid.total_requirements }} checked)</span>{% endif %}{% else %}<span class="status-badge pending"><span class="icon">&#9675;</span>Not Evaluated</span>{% endif %}</td>
                     <td>{{ bid.counts.COMPLIANT }}</td>
                     <td>{{ bid.counts.PARTIALLY_COMPLIANT }}</td>
                     <td>{{ bid.counts.NON_COMPLIANT }}</td>
@@ -152,5 +162,10 @@
         </div>
         {% endif %}
     </div>
+{% endif %}
+{% if processing_status and processing_status.status == "queued" or processing_status.status == "processing" %}
+<script>
+(function(){ const url="{% url 'tender_processing_status' tender.tender_id %}"; const poll=async()=>{ try{ const r=await fetch(url,{cache:"no-store"}); const d=await r.json(); if(d.status==="completed"||d.status==="failed"){location.reload();return;} }catch(e){} setTimeout(poll,2000); }; setTimeout(poll,2000); })();
+</script>
 {% endif %}
 {% endblock %}

@@ -523,6 +523,7 @@ table.data-table tr:hover { background: #fafbff; }
 .queue-status.queued { background: #f5f3ff; }
 .queue-status.processing { background: #eef7ff; }
 .queue-status.failed { background: #fff0f0; }
+.queue-status.stale { background: #fff9e6; }
 .score-summary { display: flex; align-items: center; gap: 24px; padding: 8px 0 20px; }
 .score-number { font-size: 54px; font-weight: 900; line-height: 1; }
 .score-denom { color: var(--muted); font-size: 18px; margin-left: 4px; }

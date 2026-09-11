@@ -1,10 +1,9 @@
 from pathlib import Path
-import gc
 import hashlib
 import json
 import re
 
-from scripts.model_manager import get_llm, reset_context
+from scripts.model_manager import LLM_LOCK, get_llm, reset_context
 from scripts.atomic_io import atomic_write_json, merge_write_json
 from scripts import text_extractor
 
@@ -29,49 +28,22 @@ def load_requirements(tender_dir):
 
 
 def load_pages(bid_dir):
-    processed_dir = bid_dir / "documents" / "processed"
-
-    if not processed_dir.exists():
-        return []
-
-    pages = []
-
-    for text_file in sorted(processed_dir.glob("*.txt")):
-        content = text_file.read_text(
-            encoding="utf-8",
-            errors="ignore",
-        )
-
-        matches = list(
-            re.finditer(
-                r"<\[PAGE\s+(\d+)\]>",
-                content,
-            )
-        )
-
-        for index, match in enumerate(matches):
-            start = match.end()
-            end = (
-                matches[index + 1].start()
-                if index + 1 < len(matches)
-                else len(content)
-            )
-
-            text = content[start:end].strip()
-
-            if text:
-                pages.append(
-                    {
-                        "file": text_file.stem + ".pdf",
-                        "page": int(match.group(1)),
-                        "text": text,
-                    }
-                )
-
-    return pages
+    return text_extractor.read_processed_pages(bid_dir / "documents" / "processed")
 
 
 def find_relevant_pages(requirement, pages, limit=4):
+    """Pick the `limit` pages most likely to contain evidence for
+    `requirement`, ranked by shared-keyword overlap.
+
+    If nothing overlaps at all - e.g. the bid document phrases the same
+    spec differently than the tender ("CPU" vs "Processor") - this used to
+    return an empty list, which made evaluate_requirement() score the
+    requirement 0 without ever consulting the model. Fall back to the
+    first `limit` pages instead, so the LLM still gets a chance to find
+    evidence that doesn't share vocabulary with the requirement text; a
+    genuine lack of evidence is then a model judgement, not a keyword
+    miss.
+    """
     words = {
         word.lower()
         for word in re.findall(
@@ -100,10 +72,9 @@ def find_relevant_pages(requirement, pages, limit=4):
         reverse=True,
     )
 
-    return [
-        page
-        for _, page in scored[:limit]
-    ]
+    top = [page for _, page in scored[:limit]]
+
+    return top if top else pages[:limit]
 
 
 def build_prompt(requirement, pages):
@@ -115,15 +86,17 @@ def build_prompt(requirement, pages):
     )
 
     return f"""
-You are verifying one procurement requirement against seller documents.
+You are a procurement compliance reviewer. Decide whether the seller's
+document evidence below satisfies ONE specific tender requirement.
 
-Requirement:
+Requirement (the exact condition the seller's bid must satisfy):
 {json.dumps(requirement, ensure_ascii=False)}
 
-Seller document evidence:
+Seller document evidence (the only source of truth you may use):
 {evidence_text}
 
-Return ONLY valid JSON with exactly:
+Return ONLY valid JSON (no markdown fences, no commentary) with
+exactly:
 {{
     "score": 0,
     "file": null,
@@ -131,23 +104,33 @@ Return ONLY valid JSON with exactly:
     "evidence": null
 }}
 
-Scoring instructions:
-- Score must be an integer from 0 to 100.
-- Evaluate the requirement against the supplied seller evidence, not against assumptions.
-- 100: the seller evidence clearly and completely satisfies the requirement.
-- 90-99: essentially complete compliance with only a very minor gap.
+How to evaluate:
+- Compare the requirement's specific numbers, standards, and
+  conditions against what the evidence actually states. An equal or
+  better spec than the requirement asks for still counts as met
+  (e.g. 32 GB RAM satisfies "Minimum 16 GB RAM"); a lesser spec does
+  not, even if it is close.
+- Base the score only on the supplied evidence text - never assume,
+  extrapolate from general product knowledge, or give credit for
+  something the evidence doesn't actually say.
+- If the evidence uses different wording for the same thing the
+  requirement asks about (e.g. "CPU" for "Processor"), treat it as
+  relevant and evaluate it on its merits.
+
+Scoring scale (integer 0-100):
+- 100: the evidence clearly and completely satisfies the requirement, with no gap.
+- 90-99: essentially complete compliance with only a very minor, non-material gap.
 - 75-89: strong compliance but one meaningful detail is incomplete or uncertain.
-- 60-74: substantial but incomplete/partial compliance.
-- 40-59: mixed evidence; important parts are missing or unclear.
-- 20-39: weak evidence or substantial failure to meet the requirement.
-- 1-19: evidence exists but provides almost no compliance.
-- 0: no supporting evidence is present OR the evidence clearly contradicts/fails the requirement.
-- Do NOT treat compliance as a binary decision. Intermediate scores are expected whenever the evidence is incomplete, partially satisfies the requirement, or leaves reasonable uncertainty.
-- Do not default to 0 or 100 merely because the requirement is difficult.
-- Never invent evidence, specifications, certifications, pages, or facts.
-- If evidence supports the requirement, return the exact source file and page containing the strongest evidence.
-- If no useful evidence exists, use null for file, page and evidence.
-- Keep evidence concise and grounded in the supplied text.
+- 60-74: substantial but incomplete/partial compliance - more met than missing.
+- 40-59: mixed evidence; important parts of the requirement are missing or unclear.
+- 20-39: weak evidence, or the evidence falls clearly short of what's required.
+- 1-19: evidence is present but gives almost no support for compliance.
+- 0: no relevant evidence is present, OR the evidence directly contradicts/fails the requirement.
+- Compliance is a spectrum, not a binary choice - use intermediate scores whenever the evidence is partial, ambiguous, or only indirectly relevant. Do not round up to 100 or down to 0 just because the call is hard.
+- Never invent evidence, specifications, certifications, pages, or facts that are not in the text above.
+- When evidence supports the requirement, cite the exact source file and page with the single strongest supporting passage.
+- If no useful evidence exists anywhere in the supplied pages, use null for file, page, and evidence, and score 0.
+- Keep "evidence" short (one sentence) and directly grounded in the supplied text - do not paraphrase into a stronger claim than the source actually makes.
 """
 
 
@@ -168,23 +151,27 @@ def evaluate_requirement(llm, requirement, pages):
 
     prompt = build_prompt(requirement, relevant)
 
-    response = llm.create_chat_completion(
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You evaluate procurement requirements "
-                    "using only supplied seller evidence."
-                ),
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.25,
-        response_format={"type": "json_object"},
-    )
+    # Held for the whole call: a llama_cpp Llama instance can't safely
+    # serve two concurrent create_chat_completion() calls, and this LLM is
+    # shared with scripts/requirement_detector.py's background worker.
+    with LLM_LOCK:
+        response = llm.create_chat_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You evaluate procurement requirements "
+                        "using only supplied seller evidence."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.25,
+            response_format={"type": "json_object"},
+        )
 
     result = json.loads(
         response["choices"][0]["message"]["content"]
@@ -211,21 +198,13 @@ def evaluate_requirement(llm, requirement, pages):
         except (TypeError, ValueError):
             page = None
 
-    output = {
+    return {
         "id": requirement["id"],
         "score": score,
         "file": file_name,
         "page": page,
         "evidence": evidence,
     }
-
-    # Drop per-call temporaries (evidence pages, the built prompt, and the
-    # raw LLM response object) now that we've extracted what we need. The
-    # LLM instance itself is left loaded/untouched.
-    del relevant, prompt, response, result
-    gc.collect()
-
-    return output
 
 
 def compute_bid_documents_hash(bid_dir):
@@ -389,8 +368,6 @@ def process_bid(tender_dir, bid_id):
             entry["error"] = str(exc)
             save_status(bid_dir, bid_documents_hash, requirements_status)
             raise
-        finally:
-            gc.collect()
 
         entry["status"] = "completed"
         entry["result"] = result
@@ -401,11 +378,6 @@ def process_bid(tender_dir, bid_id):
             bid_dir,
             build_evaluation(requirements, requirements_status),
         )
-
-        # This requirement's result now lives in requirements_status /
-        # evaluation.json; drop the local reference before moving on.
-        del result
-        gc.collect()
 
     return build_evaluation(requirements, requirements_status)
 

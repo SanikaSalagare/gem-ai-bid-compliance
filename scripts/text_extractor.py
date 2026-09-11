@@ -1,5 +1,4 @@
 import re
-import gc
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
@@ -14,6 +13,12 @@ PDF_TYPE_SCANNED = "SCANNED"
 
 SCANNED_TEXT_THRESHOLD_CHARS = 50
 SCANNED_PAGE_FRACTION = 0.5
+
+# Marks the start of each page's text in a processed .txt file (written by
+# build_text_content below). Shared with requirement_detector.py and
+# compliance_checker.py via read_processed_pages() so there is exactly one
+# place that knows this format.
+PAGE_MARKER_RE = re.compile(r"<\[PAGE\s+(\d+)\]>")
 
 _ocr_engine = None
 
@@ -104,12 +109,6 @@ def extract_digital_pages(pdf_path: Path) -> list[str]:
         text = page.extract_text() or "[No text detected]"
         pages.append(clean_text(text))
 
-    # The PdfReader keeps the whole parsed document (and each page object)
-    # alive; it's only needed to build `pages` above, so drop it as soon
-    # as we're done rather than letting it linger for the caller's scope.
-    del reader
-    gc.collect()
-
     return pages
 
 
@@ -127,13 +126,6 @@ def extract_scanned_pages(pdf_path: Path) -> list[str]:
             if page_text.strip()
             else "[No text detected]"
         )
-
-    # `results` holds the raw OCR output (images/boxes/etc. per page);
-    # `pages` already has everything we need from it, so release it.
-    # The OCR engine itself (`ocr`) is the persistent, cached instance
-    # and is intentionally left alone.
-    del results
-    gc.collect()
 
     return pages
 
@@ -198,17 +190,90 @@ def process_pdf(pdf_path: Path, processed_dir: Path) -> bool:
         encoding="utf-8",
     )
 
-    # Release the extracted page text now that it's on disk, and force a
-    # collection after this (potentially large) processing stage.
-    del pages
-    gc.collect()
-
     return True
+
+
+def processed_hash_matches(pdf_path: Path, processed_dir: Path) -> bool:
+    """True only if pdf_path has a processed .txt whose recorded HASH
+    line matches the PDF's current content hash - i.e. extraction has
+    actually completed successfully for the file as it exists right now.
+
+    Used for change-detection bookkeeping instead of hashing the raw PDF
+    bytes alone: hashing the PDF alone can't tell a genuinely-processed
+    file apart from one whose extraction silently failed (see
+    process_pdf, which prints an error and returns False without
+    writing a .txt on failure) - that previously made a failed file
+    look "already handled" forever, since its raw-PDF hash never
+    changes on its own.
+    """
+    txt_path = processed_dir / f"{pdf_path.stem}.txt"
+    return read_existing_hash(txt_path) == get_pdf_hash(pdf_path)
+
+
+def read_processed_pages(processed_dir: Path) -> list[dict]:
+    """Read every processed .txt file in `processed_dir` and split each one
+    back into per-page dicts using the "<[PAGE n]>" markers written by
+    build_text_content() above.
+
+    Shared by requirement_detector.load_pages and
+    compliance_checker.load_pages so both read the exact same on-disk
+    format the exact same way instead of maintaining two copies of this
+    parsing logic.
+    """
+    processed_dir = Path(processed_dir)
+
+    if not processed_dir.exists():
+        return []
+
+    pages = []
+
+    for text_file in sorted(processed_dir.glob("*.txt")):
+        content = text_file.read_text(encoding="utf-8", errors="ignore")
+        matches = list(PAGE_MARKER_RE.finditer(content))
+
+        for index, match in enumerate(matches):
+            start = match.end()
+            end = (
+                matches[index + 1].start()
+                if index + 1 < len(matches)
+                else len(content)
+            )
+
+            page_text = content[start:end].strip()
+
+            if page_text:
+                pages.append(
+                    {
+                        "file": text_file.stem + ".pdf",
+                        "page": int(match.group(1)),
+                        "text": page_text,
+                    }
+                )
+
+    return pages
+
+
+def _clean_orphaned_processed_files(document_folder: Path, processed_dir: Path) -> None:
+    """Remove any processed/*.txt (and its backups) whose source PDF is
+    no longer present in document_folder, so a removed/renamed document
+    can never keep contributing stale text to extraction downstream."""
+    if not processed_dir.exists():
+        return
+
+    current_stems = {pdf_path.stem for pdf_path in document_folder.glob("*.pdf")}
+
+    for txt_path in processed_dir.glob("*.txt"):
+        if txt_path.stem not in current_stems:
+            txt_path.unlink(missing_ok=True)
+            txt_path.with_name(txt_path.name + ".backup1").unlink(missing_ok=True)
+            txt_path.with_name(txt_path.name + ".backup2").unlink(missing_ok=True)
 
 
 def process_document_folder(document_folder: Path) -> None:
     document_folder = Path(document_folder)
     processed_dir = document_folder / "processed"
+
+    _clean_orphaned_processed_files(document_folder, processed_dir)
 
     for pdf_path in sorted(document_folder.glob("*.pdf")):
         action = (

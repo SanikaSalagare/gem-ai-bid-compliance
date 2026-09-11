@@ -8,15 +8,20 @@
     </div>
 </div>
 
+<form method="get" class="toolbar">
+    <input type="search" name="q" placeholder="Search by tender title..." value="{{ query }}">
+    <button type="submit" class="button secondary">Search</button>
+</form>
+
 <div class="card">
     {% if tenders %}
     <div class="data-table-wrap">
     <table class="data-table">
-        <thead><tr><th>Tender ID</th><th>Requirements</th><th>Bids Submitted</th><th></th></tr></thead>
+        <thead><tr><th>Title</th><th>Requirements</th><th>Bids Submitted</th><th></th></tr></thead>
         <tbody>
         {% for tender in tenders %}
             <tr>
-                <td class="id-cell">{{ tender.tender_id }}</td>
+                <td class="id-cell">{{ tender.title }}<br><span class="muted-cell">{{ tender.tender_id }}</span></td>
                 <td>{{ tender.requirement_count }}</td>
                 <td>{{ tender.bid_count }}</td>
                 <td><a class="button small" href="{% url 'seller_tender_detail' tender.tender_id %}">View Tender</a></td>
@@ -28,7 +33,11 @@
     {% else %}
     <div class="empty-state">
         <div class="icon">&#128269;</div>
+        {% if query %}
+        <p>No tenders match "{{ query }}".</p>
+        {% else %}
         <p>No tenders are open for bidding yet.</p>
+        {% endif %}
     </div>
     {% endif %}
 </div>

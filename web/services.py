@@ -20,14 +20,13 @@ backend classifies or scores a bid.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import manage
-
-PAGE_MARKER_RE = re.compile(r"<\[PAGE\s+(\d+)\]>")
+from web.demo_accounts import BUYERS, SELLERS, get_account
+from scripts.text_extractor import PAGE_MARKER_RE
 
 # ---------------------------------------------------------------------------
 # Compliance status buckets (display-only; backend only returns a 0-100
@@ -114,6 +113,16 @@ class TenderSummary:
     def bid_count(self):
         return len(self.bids)
 
+    @property
+    def title(self):
+        return self.metadata.get("title") or self.tender_id
+
+    @property
+    def buyer(self) -> dict:
+        """The buyer account that posted this tender (company/org info),
+        for display to sellers browsing/viewing the tender."""
+        return get_account(BUYERS, self.metadata.get("buyer_id"))
+
 
 def get_all_tenders() -> list[str]:
     return manage.list_tenders()
@@ -135,6 +144,16 @@ def get_tender_summary(tender_id: str) -> Optional[TenderSummary]:
         documents=documents,
         metadata=metadata,
     )
+
+
+def get_tender_title(tender_id: str) -> Optional[str]:
+    """Best-effort tender title for display next to a tender_id, e.g. in
+    breadcrumbs on pages that don't otherwise load the full
+    TenderSummary. Returns None if the tender doesn't exist."""
+    metadata = manage.get_tender_metadata(tender_id)
+    if metadata is None:
+        return None
+    return metadata.get("title") or tender_id
 
 
 def get_requirement(tender_id: str, requirement_id: int) -> Optional[dict]:
@@ -167,6 +186,11 @@ class BidSummary:
     overall_score: Optional[int]
     overall_status: str
     overall_label: str
+    evaluated_count: int = 0
+    total_requirements: int = 0
+    evaluation_partial: bool = False
+    seller: Optional[dict] = None
+    documents_changed_since_analysis: bool = False
 
 
 def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
@@ -176,6 +200,12 @@ def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
     requirements = manage.get_requirements(tender_id) or []
     evaluation = manage.get_compliance(tender_id, bid_id)
     documents = manage.get_documents(tender_id, bid_id)
+
+    bid_metadata = manage.get_bid_metadata(tender_id, bid_id) or {}
+    seller_id = bid_metadata.get("seller_id")
+    # Bids created before seller tracking was added won't have a
+    # seller_id on record - show nothing rather than guessing.
+    seller = get_account(SELLERS, seller_id) if seller_id else None
 
     evaluation_by_id = {}
     if evaluation:
@@ -205,6 +235,15 @@ def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
     overall_status = classify_score({"score": overall_score, "evidence": True}) if overall_score is not None else STATUS_PENDING
     overall_label = score_label(overall_score)
 
+    # An average built from only some requirements can look like a
+    # finished, good score even while most of the bid hasn't been
+    # checked yet (evaluation.json is written incrementally as each
+    # requirement completes). Surface the actual progress so templates
+    # can show "X of Y checked" instead of a bare, seemingly-final score.
+    total_requirements = len(requirements)
+    evaluated_count = len(scored)
+    evaluation_partial = evaluation is not None and evaluated_count < total_requirements
+
     return BidSummary(
         bid_id=bid_id,
         documents=documents,
@@ -214,6 +253,11 @@ def get_bid_summary(tender_id: str, bid_id: str) -> Optional[BidSummary]:
         overall_score=overall_score,
         overall_status=overall_status,
         overall_label=overall_label,
+        evaluated_count=evaluated_count,
+        total_requirements=total_requirements,
+        evaluation_partial=evaluation_partial,
+        seller=seller,
+        documents_changed_since_analysis=manage.is_bid_analysis_stale(tender_id, bid_id),
     )
 
 

@@ -3,7 +3,7 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
     <a href="{% url 'seller_dashboard' %}">Open Tenders</a><span class="sep">/</span>
-    <a href="{% url 'seller_tender_detail' tender_id %}">{{ tender_id }}</a><span class="sep">/</span>
+    <a href="{% url 'seller_tender_detail' tender_id %}">{{ tender_title|default:tender_id }} <span class="muted-cell">({{ tender_id }})</span></a><span class="sep">/</span>
     <span class="current">{{ bid.bid_id }}</span>
 </div>
 {% endblock %}
@@ -30,7 +30,10 @@
     {% elif analysis_status and analysis_status.status == "failed" %}
         <div class="queue-status failed"><strong>Analysis failed</strong><span>{{ analysis_status.error }}</span></div>
     {% elif bid.evaluation_ready %}
-    <div class="score-summary"><div><span class="score-number">{{ bid.overall_score }}</span><span class="score-denom">/100</span></div><div><div class="score-label">{{ bid.overall_label }}</div><p class="card-subtle">AI-generated overall compliance score.</p></div></div>
+    {% if bid.documents_changed_since_analysis %}
+    <div class="queue-status stale"><strong>Documents changed</strong><span>You've uploaded documents since this compliance check ran. Submit again to include them.</span></div>
+    {% endif %}
+    <div class="score-summary"><div><span class="score-number">{{ bid.overall_score }}</span><span class="score-denom">/100</span></div><div><div class="score-label">{{ bid.overall_label }}</div>{% if bid.evaluation_partial %}<p class="card-subtle" style="color:#b45309;">&#9888; Based on {{ bid.evaluated_count }} of {{ bid.total_requirements }} requirements checked so far - analysis still in progress.</p>{% else %}<p class="card-subtle">AI-generated overall compliance score.</p>{% endif %}</div></div>
         <div class="compliance-breakdown">
             <div class="breakdown-item"><span class="status-badge compliant"><span class="icon">&#10003;</span></span><span class="count">{{ bid.counts.COMPLIANT }}</span> Compliant</div>
             <div class="breakdown-item"><span class="status-badge partial"><span class="icon">&#9888;</span></span><span class="count">{{ bid.counts.PARTIALLY_COMPLIANT }}</span> Partial</div>
@@ -50,10 +53,11 @@
     <form method="post" action="{% url 'seller_upload_bid_document' tender_id bid.bid_id %}" enctype="multipart/form-data" class="inline-form" style="margin-bottom:18px;">
         {% csrf_token %}
         <div class="file-input-wrap">
-            <input type="file" name="document" accept="application/pdf" required>
+            <input type="file" name="documents" accept="application/pdf" multiple required>
         </div>
-        <button type="submit" class="button primary">Upload PDF</button>
+        <button type="submit" class="button primary">Upload PDFs</button>
     </form>
+    <p class="card-subtle" style="margin-top:-10px;margin-bottom:18px;">You can select multiple files at once, and can keep adding documents even after a compliance check has run - just submit again to include them.</p>
 
     {% if bid.documents %}
     <div class="data-table-wrap">

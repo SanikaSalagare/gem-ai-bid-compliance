@@ -12,6 +12,11 @@ urlpatterns = [
     path("buyer/tenders/<str:tender_id>/", views.tender_detail, name="tender_detail"),
     path("buyer/tenders/<str:tender_id>/process/", views.process_tender, name="process_tender"),
     path(
+        "buyer/tenders/<str:tender_id>/processing-status/",
+        views.tender_processing_status,
+        name="tender_processing_status",
+    ),
+    path(
         "buyer/tenders/<str:tender_id>/documents/upload/",
         views.upload_tender_document,
         name="upload_tender_document",

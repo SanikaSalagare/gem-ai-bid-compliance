@@ -2,7 +2,8 @@ from pathlib import Path
 import json
 import re
 
-from scripts.model_manager import get_llm, reset_context
+from scripts.model_manager import LLM_LOCK, get_llm, reset_context
+from scripts import text_extractor
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
@@ -10,50 +11,16 @@ OUTPUT_FILENAME = "requirement.json"
 
 MAX_CHUNK_CHARS = 12000
 
+# The full shape of one requirement.json entry. Shared with web/views.py
+# (requirement_detail) so the view's "any extra/unexpected fields" check
+# stays in sync with this module instead of hardcoding its own copy.
+REQUIREMENT_FIELDS = {"id", "requirement", "file", "page"}
 
 
 def load_pages(tender_dir):
-    processed_dir = tender_dir / "tender_documents" / "processed"
-
-    if not processed_dir.exists():
-        return []
-
-    pages = []
-
-    for text_file in sorted(processed_dir.glob("*.txt")):
-        content = text_file.read_text(
-            encoding="utf-8",
-            errors="ignore",
-        )
-
-        matches = list(
-            re.finditer(
-                r"<\[PAGE\s+(\d+)\]>",
-                content,
-            )
-        )
-
-        for index, match in enumerate(matches):
-            page_number = int(match.group(1))
-            start = match.end()
-            end = (
-                matches[index + 1].start()
-                if index + 1 < len(matches)
-                else len(content)
-            )
-
-            page_text = content[start:end].strip()
-
-            if page_text:
-                pages.append(
-                    {
-                        "file": text_file.stem + ".pdf",
-                        "page": page_number,
-                        "text": page_text,
-                    }
-                )
-
-    return pages
+    return text_extractor.read_processed_pages(
+        tender_dir / "tender_documents" / "processed"
+    )
 
 
 def build_chunks(pages, max_chars=MAX_CHUNK_CHARS):
@@ -95,12 +62,25 @@ def build_prompt(chunk):
     )
 
     return f"""
-You are extracting buyer requirements from a government procurement tender.
+You are a procurement analyst extracting buyer requirements from a
+government tender (GeM) document, so that each requirement can later
+be checked one-by-one against a seller's bid.
 
-Read ONLY the supplied tender pages.
+A "requirement" is a condition the tender imposes on the seller that
+their bid must satisfy - a technical specification, an eligibility
+criterion, a certification/standard, a commercial/delivery term, or a
+quantity/turnaround limit. It is NOT a section heading, a page
+number, a table of contents entry, boilerplate ("terms and
+conditions apply"), or narrative text that imposes no condition on
+the seller. If a sentence only describes the buyer's context (e.g.
+background of the department) and asks nothing of the seller, leave
+it out.
 
-Return ONLY a valid JSON object with exactly one key, "requirements",
-whose value is a JSON array.
+Read ONLY the supplied tender pages below. Do not use outside
+knowledge of typical GeM tenders to fill gaps.
+
+Return ONLY a valid JSON object (no markdown fences, no commentary)
+with exactly one key, "requirements", whose value is a JSON array.
 
 Each item in the array must have exactly:
 {{
@@ -109,9 +89,11 @@ Each item in the array must have exactly:
     "file": ""
 }}
 
-Each "requirement" must be ONE atomic, single-condition requirement -
-not a paragraph, not a bullet block, and not several conditions joined
-together with semicolons/commas/newlines.
+Each "requirement" string must state ONE atomic, single-condition
+requirement - not a paragraph, not a bullet block, and not several
+conditions joined together with semicolons/commas/newlines. A useful
+test: if the sentence contains two things a seller could separately
+pass or fail, it must become two items.
 
 If the tender lists a labeled specification table or a bullet list
 (e.g. "Processor: ...; Memory: ...; Storage: ...; Warranty: ..."),
@@ -132,18 +114,24 @@ one per line item, all citing the same page/file they came from):
 }}
 
 Rules:
-- Extract only explicit buyer requirements.
-- Do not invent or infer requirements.
-- Split any compound/list-style requirement into separate atomic items,
-  one condition per item, even if the source text presents them as one
-  run-on sentence or a semicolon/comma-separated list.
+- Extract only explicit, seller-facing buyer requirements as defined
+  above. Do not invent, infer, or generalize beyond what is written.
+- Split any compound/list-style requirement into separate atomic
+  items, one condition per item, even if the source text presents
+  them as one run-on sentence or a semicolon/comma-separated list.
 - Never join two or more distinct conditions into a single
   "requirement" string with ";", " and ", or similar.
 - Preserve numbers, quantities, limits, standards and conditions
-  exactly as written for each individual item.
+  exactly as written for each individual item - do not round,
+  convert units, or paraphrase specifics.
 - Keep each item's own label/prefix (e.g. "Processor:", "Memory:") if
-  the source uses labels, so the item stays understandable on its own.
-- Include the source PDF filename and exact page number for every item.
+  the source uses labels, so the item stays understandable on its own
+  without the surrounding table.
+- Include the source PDF filename and exact page number for every
+  item, copied exactly from the FILE/PAGE markers of the page it came
+  from - never guess or reuse a neighboring page's marker.
+- Skip headings, page numbers, and administrative boilerplate that
+  imposes no condition on the seller.
 - If there are no requirements in this chunk, return {{"requirements": []}}.
 - Do not create IDs. IDs will be assigned after consolidation.
 - Return JSON only.
@@ -155,29 +143,34 @@ TENDER PAGES:
 
 
 def extract_chunk_requirements(llm, chunk):
-    response = llm.create_chat_completion(
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You extract explicit procurement requirements "
-                    "from page-aware tender text."
-                ),
-            },
-            {
-                "role": "user",
-                "content": build_prompt(chunk),
-            },
-        ],
-        temperature=0.1,
-        # Reserve explicit room for the JSON response instead of letting
-        # it compete with the input for whatever is left of n_ctx. Without
-        # this, a large chunk could leave the model almost no budget to
-        # write anything back, and grammar-constrained JSON decoding would
-        # just close out with an empty "[]"/"{}" rather than erroring.
-        max_tokens=4096,
-        response_format={"type": "json_object"},
-    )
+    # Held for the whole call: a llama_cpp Llama instance can't safely
+    # serve two concurrent create_chat_completion() calls, and this LLM
+    # is shared with scripts/compliance_checker.py's background worker.
+    with LLM_LOCK:
+        response = llm.create_chat_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You extract explicit procurement requirements "
+                        "from page-aware tender text."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": build_prompt(chunk),
+                },
+            ],
+            temperature=0.1,
+            # Reserve explicit room for the JSON response instead of
+            # letting it compete with the input for whatever is left of
+            # n_ctx. Without this, a large chunk could leave the model
+            # almost no budget to write anything back, and
+            # grammar-constrained JSON decoding would just close out with
+            # an empty "[]"/"{}" rather than erroring.
+            max_tokens=4096,
+            response_format={"type": "json_object"},
+        )
 
     content = response["choices"][0]["message"]["content"]
 

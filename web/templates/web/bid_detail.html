@@ -4,7 +4,7 @@
 <div class="breadcrumbs">
     <a href="{% url 'buyer_dashboard' %}">Dashboard</a><span class="sep">/</span>
     <a href="{% url 'tender_list' %}">Tenders</a><span class="sep">/</span>
-    <a href="{% url 'tender_detail' tender_id %}">{{ tender_id }}</a><span class="sep">/</span>
+    <a href="{% url 'tender_detail' tender_id %}">{{ tender_title|default:tender_id }} <span class="muted-cell">({{ tender_id }})</span></a><span class="sep">/</span>
     <a href="{% url 'tender_detail' tender_id %}?tab=bids">Bids</a><span class="sep">/</span>
     <span class="current">{{ bid.bid_id }}</span>
 </div>
@@ -13,7 +13,10 @@
 <div class="page-header">
     <div>
         <h1>Bid {{ bid.bid_id }}</h1>
-        <p class="lead">{{ bid.documents|length }} document{{ bid.documents|length|pluralize }} submitted</p>
+        <p class="lead">
+            {{ bid.documents|length }} document{{ bid.documents|length|pluralize }} submitted
+            {% if bid.seller %}&middot; Submitted by {{ bid.seller.name }} ({{ bid.seller.organization }}){% endif %}
+        </p>
     </div>
     <div class="header-actions">
         <form method="post" action="{% url 'process_bid' tender_id bid.bid_id %}" onsubmit="return confirm('Run document processing and compliance evaluation for this bid? This can take a while.');">
@@ -32,7 +35,10 @@
     {% elif analysis_status and analysis_status.status == "failed" %}
         <div class="queue-status failed"><strong>Analysis failed</strong><span>{{ analysis_status.error }}</span></div>
     {% elif bid.evaluation_ready %}
-        <div class="score-summary"><div><span class="score-number">{{ bid.overall_score }}</span><span class="score-denom">/100</span></div><div><div class="score-label">{{ bid.overall_label }}</div><p class="card-subtle">Overall score based on the AI's requirement-level assessments.</p></div></div>
+        {% if bid.documents_changed_since_analysis %}
+        <div class="queue-status stale"><strong>Documents changed</strong><span>The seller has uploaded documents since this compliance check ran. Run the check again to include them.</span></div>
+        {% endif %}
+        <div class="score-summary"><div><span class="score-number">{{ bid.overall_score }}</span><span class="score-denom">/100</span></div><div><div class="score-label">{{ bid.overall_label }}</div>{% if bid.evaluation_partial %}<p class="card-subtle" style="color:#b45309;">&#9888; Based on {{ bid.evaluated_count }} of {{ bid.total_requirements }} requirements checked so far - analysis still in progress.</p>{% else %}<p class="card-subtle">Overall score based on the AI's requirement-level assessments.</p>{% endif %}</div></div>
         <div class="compliance-breakdown">
             <div class="breakdown-item"><span class="count">{{ bid.counts.COMPLIANT }}</span> Compliant</div>
             <div class="breakdown-item"><span class="count">{{ bid.counts.PARTIALLY_COMPLIANT }}</span> Partial</div>
